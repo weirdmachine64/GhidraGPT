@@ -112,11 +112,4 @@ fi
 
 print_status "Built plugin: $PLUGIN_FILE"
 
-print_status "Build complete!"
-print_status ""
-print_status "To install the plugin, run: ./install.sh"
-print_status "  --auto    : Automatic installation"
-print_status "  --manual  : Manual installation instructions"
-print_status ""
-
 print_status "Done!"
