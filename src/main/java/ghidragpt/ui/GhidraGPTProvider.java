@@ -18,7 +18,7 @@ import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
 import ghidragpt.GhidraGPTPlugin;
-import ghidragpt.service.CodeAnalysisService;
+import ghidragpt.service.CodeAnalysis;
 // import resources.Icons;
 
 import javax.swing.*;
@@ -36,7 +36,7 @@ public class GhidraGPTProvider extends ComponentProvider {
     private final ConfigurationPanel configPanel;
     private final GhidraGPTConsole console;
     private final JTabbedPane tabbedPane;
-    private CodeAnalysisService analysisService;
+    private CodeAnalysis analysisService;
     private Program currentProgram;
     
     public GhidraGPTProvider(GhidraGPTPlugin plugin, String name) {
@@ -99,7 +99,7 @@ public class GhidraGPTProvider extends ComponentProvider {
     }
     
     private void createEnhanceFunctionAction() {
-        DockingAction enhanceAction = new DockingAction("Enhance Code", getName()) {
+        DockingAction enhanceAction = new DockingAction("Rewrite Function", getName()) {
             @Override
             public void actionPerformed(ActionContext context) {
                 enhanceFunctionFromContext(context);
@@ -111,8 +111,8 @@ public class GhidraGPTProvider extends ComponentProvider {
             }
         };
         
-        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Enhance Code" }, null, "a"));
-        enhanceAction.setDescription("Comprehensively enhance function and variable names for maximum readability");
+        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite Function" }, null, "a"));
+        enhanceAction.setDescription("Comprehensively rewrite function and variable names for maximum readability");
         
         plugin.getTool().addAction(enhanceAction);
     }
@@ -289,8 +289,8 @@ public class GhidraGPTProvider extends ComponentProvider {
     }
     
     private void enhanceFunction() {
-        executeAnalysis("Enhancing function...", (function, monitor) -> 
-            analysisService.enhanceFunction(function, currentProgram, monitor));
+        executeAnalysis("Rewriting function...", (function, monitor) -> 
+            analysisService.rewriteFunction(function, currentProgram, monitor));
     }
     
     private void detectVulnerabilities() {
@@ -308,8 +308,8 @@ public class GhidraGPTProvider extends ComponentProvider {
     private void enhanceFunctionFromContext(ActionContext context) {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
-        executeAnalysisWithContext("Enhancing function...", function, program,
-            (f, p, monitor) -> analysisService.enhanceFunction(f, p, monitor));
+        executeAnalysisWithContext("Rewriting function...", function, program,
+            (f, p, monitor) -> analysisService.rewriteFunction(f, p, monitor));
     }
 
     private void detectVulnerabilitiesFromContext(ActionContext context) {
@@ -423,7 +423,7 @@ public class GhidraGPTProvider extends ComponentProvider {
         if (analysisService != null) {
             analysisService.dispose();
         }
-        analysisService = new CodeAnalysisService(plugin.getGPTService(), console);
+        analysisService = new CodeAnalysis(plugin.getGPTService(), console);
         analysisService.initializeDecompiler(program);
     }
     

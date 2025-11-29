@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Service class for interacting with various GPT APIs (OpenAI, Anthropic Claude, etc.)
  */
-public class GPTService {
+public class APIClient {
     
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
     private static final String ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -49,11 +49,11 @@ public class GPTService {
         OPENAI, ANTHROPIC, GEMINI, COHERE, MISTRAL, DEEPSEEK, GROK, OLLAMA, OPENAI_COMPATIBLE
     }
     
-    public GPTService() {
+    public APIClient() {
         this(DEFAULT_TIMEOUT_SECONDS);
     }
     
-    public GPTService(int timeoutSeconds) {
+    public APIClient(int timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)

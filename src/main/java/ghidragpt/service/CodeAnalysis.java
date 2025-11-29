@@ -20,18 +20,18 @@ import java.util.Iterator;
 /**
  * Service for analyzing code using GPT models
  */
-public class CodeAnalysisService {
+public class CodeAnalysis {
     
-    private final GPTService gptService;
+    private final APIClient apiClient;
     private final DecompInterface decompiler;
-    private final CodeEnhancementService codeEnhancementService;
+    private final FunctionRewrite functionRewriteService;
     private final GhidraGPTConsole console;
     
-    public CodeAnalysisService(GPTService gptService, GhidraGPTConsole console) {
-        this.gptService = gptService;
+    public CodeAnalysis(APIClient apiClient, GhidraGPTConsole console) {
+        this.apiClient = apiClient;
         this.console = console;
         this.decompiler = new DecompInterface();
-        this.codeEnhancementService = new CodeEnhancementService(gptService, console);
+        this.functionRewriteService = new FunctionRewrite(apiClient, console);
     }
     
     public void initializeDecompiler(Program program) {
@@ -42,13 +42,13 @@ public class CodeAnalysisService {
     
     public void dispose() {
         decompiler.dispose();
-        codeEnhancementService.dispose();
+        functionRewriteService.dispose();
     }
     
     /**
-     * Comprehensively enhance function: rename function and variables for maximum readability
+     * Comprehensively rewrite function: rename function and variables for maximum readability
      */
-    public String enhanceFunction(Function function, Program program, TaskMonitor monitor) {
+    public String rewriteFunction(Function function, Program program, TaskMonitor monitor) {
         try {
             if (!isServiceConfigured()) {
                 return createConfigurationError();
@@ -56,14 +56,14 @@ public class CodeAnalysisService {
             
             monitor.setMessage("Comprehensively enhancing function...");
 
-            CodeEnhancementService.EnhancementResult result = 
-                codeEnhancementService.enhanceFunction(function, program, monitor);
+            FunctionRewrite.EnhancementResult result = 
+                functionRewriteService.rewriteFunction(function, program, monitor);
             
             return result.getReport();
             
         } catch (Exception e) {
             Msg.error(this, "Error enhancing function: " + e.getMessage(), e);
-            return "Error during function enhancement: " + e.getMessage();
+            return "Error during function rewrite: " + e.getMessage();
         }
     }
     
@@ -95,17 +95,17 @@ public class CodeAnalysisService {
             try {
                 // Print analysis header using console
                 long startTime = System.currentTimeMillis();
-                GPTService.GPTProvider provider = gptService.getProvider();
+                APIClient.GPTProvider provider = apiClient.getProvider();
                 if (console != null) {
                     console.printAnalysisHeader("⚠ Vulnerability Detection", function.getName(), 
-                        provider.toString(), gptService.getModel(), prompt.length());
+                        provider.toString(), apiClient.getModel(), prompt.length());
                 }
                 
                 // Use StringBuilder to collect streaming response
                 final StringBuilder responseBuilder = new StringBuilder();
                 
                 // Send request with streaming
-                String response = gptService.sendRequest(prompt, new GPTService.StreamCallback() {
+                String response = apiClient.sendRequest(prompt, new APIClient.StreamCallback() {
                     private boolean isFirstResponse = true;
                     
                     @Override
@@ -174,12 +174,12 @@ public class CodeAnalysisService {
             try {
                 // Print analysis header using console
                 long startTime = System.currentTimeMillis();
-                GPTService.GPTProvider provider = gptService.getProvider();
+                APIClient.GPTProvider provider = apiClient.getProvider();
                 if (console != null) {
                     console.printAnalysisHeader("◉ Function Explanation", function.getName(),
-                        provider.toString(), gptService.getModel(), prompt.length());
+                        provider.toString(), apiClient.getModel(), prompt.length());
                 }                // Send request with streaming
-                String response = gptService.sendRequest(prompt, new GPTService.StreamCallback() {
+                String response = apiClient.sendRequest(prompt, new APIClient.StreamCallback() {
                     private boolean isFirstResponse = true;
                     
                     @Override
@@ -228,10 +228,10 @@ public class CodeAnalysisService {
     // Helper methods for configuration and error handling
     private boolean isServiceConfigured() {
         // Ollama doesn't require API key, all others do
-        if (gptService.getProvider() == GPTService.GPTProvider.OLLAMA) {
+        if (apiClient.getProvider() == APIClient.GPTProvider.OLLAMA) {
             return true; // Ollama only needs to be selected, no API key required
         }
-        return gptService.getApiKey() != null && !gptService.getApiKey().trim().isEmpty();
+        return apiClient.getApiKey() != null && !apiClient.getApiKey().trim().isEmpty();
     }
     
     private String createConfigurationError() {
@@ -240,7 +240,7 @@ public class CodeAnalysisService {
     }
     
     private String createEmptyResponseError() {
-        return "Empty or no response from AI service.\n\n" +
+        return "Empty or no response from model service.\n\n" +
                "Possible causes:\n" +
                "1. API key is invalid or expired\n" +
                "2. Network connectivity issues\n" +
@@ -252,9 +252,9 @@ public class CodeAnalysisService {
     private String createConfigurationStatus() {
         StringBuilder status = new StringBuilder();
         status.append("Current Configuration:\n");
-        status.append("Provider: ").append(gptService.getProvider()).append("\n");
-        status.append("Model: ").append(gptService.getModel().isEmpty() ? "default" : gptService.getModel()).append("\n");
-        status.append("API Key: ").append(gptService.getApiKey() != null && !gptService.getApiKey().trim().isEmpty() ? "configured" : "not configured").append("\n");
+        status.append("Provider: ").append(apiClient.getProvider()).append("\n");
+        status.append("Model: ").append(apiClient.getModel().isEmpty() ? "default" : apiClient.getModel()).append("\n");
+        status.append("API Key: ").append(apiClient.getApiKey() != null && !apiClient.getApiKey().trim().isEmpty() ? "configured" : "not configured").append("\n");
         
         // All providers now require API key configuration
         

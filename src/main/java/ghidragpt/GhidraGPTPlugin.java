@@ -8,7 +8,7 @@ import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 import ghidragpt.ui.GhidraGPTProvider;
-import ghidragpt.service.GPTService;
+import ghidragpt.service.APIClient;
 import ghidragpt.config.ConfigurationManager;
 
 import javax.swing.*;
@@ -18,7 +18,7 @@ import javax.swing.*;
  */
 //@formatter:off
 @PluginInfo(
-    status = PluginStatus.STABLE,
+    status = PluginStatus.RELEASED,
     packageName = "GhidraGPT",
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "GPT Integration for Ghidra",
@@ -28,13 +28,13 @@ import javax.swing.*;
 public class GhidraGPTPlugin extends ProgramPlugin {
     
     private GhidraGPTProvider provider;
-    private GPTService gptService;
+    private APIClient apiClient;
     private ConfigurationManager configManager;
     private boolean configurationChecked = false;
     
     public GhidraGPTPlugin(PluginTool tool) {
         super(tool);
-        gptService = new GPTService();
+        apiClient = new APIClient();
         configManager = new ConfigurationManager();
     }
     
@@ -71,12 +71,12 @@ public class GhidraGPTPlugin extends ProgramPlugin {
                     }
                 });
             } else {
-                gptService.setApiKey(configManager.getApiKey());
-                gptService.setProvider(configManager.getProvider());
-                gptService.setModel(configManager.getModel());
-                gptService.setMaxTokens(configManager.getMaxTokens());
-                gptService.setTemperature(configManager.getTemperature());
-                gptService.setTimeoutSeconds(configManager.getTimeoutSeconds());
+                apiClient.setApiKey(configManager.getApiKey());
+                apiClient.setProvider(configManager.getProvider());
+                apiClient.setModel(configManager.getModel());
+                apiClient.setMaxTokens(configManager.getMaxTokens());
+                apiClient.setTemperature(configManager.getTemperature());
+                apiClient.setTimeoutSeconds(configManager.getTimeoutSeconds());
                 
                 Msg.info(this, "GhidraGPT configuration loaded successfully. Provider: " + 
                     configManager.getProvider() + ", Model: " + configManager.getModel() + 
@@ -108,7 +108,7 @@ public class GhidraGPTPlugin extends ProgramPlugin {
         super.dispose();
     }
     
-    public GPTService getGPTService() {
-        return gptService;
+    public APIClient getGPTService() {
+        return apiClient;
     }
 }

@@ -13,7 +13,7 @@
 
 </div>
 
-A powerful Ghidra plugin that integrates Large Language Models (LLMs) to enhance reverse engineering workflows with AI-powered code analysis and enhancement capabilities.
+A powerful Ghidra plugin that integrates Large Language Models (LLMs) to enhance reverse engineering workflows with model-powered code analysis and enhancement capabilities.
 
 ## 🎥 Demo
 
@@ -27,18 +27,18 @@ For optimal real-time performance, it is recommended to use smaller and faster m
 ## 🚀 Features
 
 ### Core Functionality
-- **Code Enhancement**: AI-powered function and variable renaming for improved code readability
+- **Function Rewrite**: Model-powered function and variable renaming for improved code readability
 - **Code Explanation**: Detailed explanations of function logic and behavior
 - **Code Analysis**: Vulnerability detection and security analysis
 - **Multi-LLM Support**: Compatible with 8+ AI providers including OpenAI, Anthropic, Google Gemini, Cohere, Mistral AI, DeepSeek, Grok (xAI), and Ollama
 
 ### Configuration
 - **Flexible Configuration**: Easy setup through configuration panel
-- **Stream Processing**: Real-time AI response streaming for better user experience
+- **Stream Processing**: Real-time model response streaming for better user experience
 
 ### Integration Features
-- **Context Menu Integration**: Right-click functions for instant AI analysis
-- **Console Interface**: Dedicated console for viewing AI responses and results
+- **Context Menu Integration**: Right-click functions for instant model analysis
+- **Console Interface**: Dedicated console for viewing model responses and results
 - **Automatic Analysis**: Integration with Ghidra's analysis pipeline
 - **Theme Support**: Custom theming for enhanced UI experience
 
@@ -62,7 +62,7 @@ For optimal real-time performance, it is recommended to use smaller and faster m
 
 4. **Configure API Keys**:
    - Open Ghidra and navigate to the GhidraGPT configuration panel
-   - Enter your preferred AI service API key
+   - Enter your preferred model service API key
    - API keys are automatically encrypted and stored securely
 
 ## 📋 Usage
@@ -70,7 +70,7 @@ For optimal real-time performance, it is recommended to use smaller and faster m
 ### Available Actions
 Access these features through the right-click context menu on any function:
 
-- **GhidraGPT → Enhance Code**: Improve function and variable names using AI analysis
+- **GhidraGPT → Rewrite Function**: Improve function and variable names using AI analysis
 - **GhidraGPT → Explain Code**: Get detailed explanations of function behavior
 - **GhidraGPT → Analyze Code**: Detect potential security vulnerabilities
 

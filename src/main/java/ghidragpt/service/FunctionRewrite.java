@@ -3,6 +3,7 @@ package ghidragpt.service;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.pcode.HighFunction;
@@ -29,43 +30,61 @@ import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Variable;
 import ghidra.program.model.listing.VariableStorage;
 import ghidragpt.ui.GhidraGPTConsole;
-import ghidragpt.service.GPTService;
+import ghidragpt.service.APIClient;
+import ghidragpt.utils.PromptBuilder;
+import ghidragpt.utils.ResponseParser;
+import ghidragpt.utils.GhidraFunctionModifier;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.Msg;
 import ghidra.program.model.address.Address;
 
-import java.util.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 /**
- * Comprehensive code enhancement service that combines function and variable renaming
+ * Comprehensive function rewrite service that combines function and variable renaming
  * to make code as human-readable as possible
  */
-public class CodeEnhancementService {
+public class FunctionRewrite {
     
     private final DecompInterface decompiler;
-    private final GPTService gptService;
+    private final APIClient apiClient;
     private final GhidraGPTConsole console;
+    private final PromptBuilder promptBuilder;
+    private final ResponseParser responseParser;
+    private final ObjectMapper objectMapper;
+    private GhidraFunctionModifier functionModifier;
     
-    public CodeEnhancementService(GPTService gptService, GhidraGPTConsole console) {
-        this.gptService = gptService;
+    public FunctionRewrite(APIClient apiClient, GhidraGPTConsole console) {
+        this.apiClient = apiClient;
         this.console = console;
         this.decompiler = new DecompInterface();
         DecompileOptions options = new DecompileOptions();
         decompiler.setOptions(options);
+        this.promptBuilder = new PromptBuilder();
+        this.responseParser = new ResponseParser();
+        this.functionModifier = null; // Will be initialized per operation
+        this.objectMapper = new ObjectMapper();
     }
     
     /**
-     * Comprehensive code enhancement: renames function, variables, sets types, and adds comments
+     * Comprehensive function rewrite: renames function, variables, sets types, and adds comments
      */
-    public EnhancementResult enhanceFunction(Function function, Program program, TaskMonitor monitor) {
+    public EnhancementResult rewriteFunction(Function function, Program program, TaskMonitor monitor) {
         EnhancementResult result = new EnhancementResult();
         result.functionName = function.getName();
         result.originalFunctionName = function.getName();
         
         try {
-            monitor.setMessage("Analyzing function for comprehensive code enhancement...");
+            monitor.setMessage("Analyzing function for comprehensive function rewrite...");
             
             // Initialize decompiler
             if (!decompiler.openProgram(program)) {
@@ -83,30 +102,34 @@ public class CodeEnhancementService {
             HighFunction highFunction = decompileResults.getHighFunction();
             String decompiledCode = decompileResults.getDecompiledFunction().getC();
             
-            // Extract variable information
-            Map<String, VariableInfo> variableMap = extractVariableInformation(function, highFunction);
+            // Create function analysis using domain model
+            FunctionAnalysis functionAnalysis = new FunctionAnalysis(function, true);
             
-            // Generate comprehensive enhancement prompt
-            String enhancementPrompt = generateComprehensiveEnhancementPrompt(function, decompiledCode, variableMap);
+            // Extract variable information using domain model
+            List<VariableAnalysis> variables = extractVariableAnalyses(function, highFunction);
+            functionAnalysis.getVariables().addAll(variables);
             
-            monitor.setMessage("Getting AI suggestions for comprehensive function rewrite...");
+            // Generate comprehensive rewrite prompt using PromptBuilder
+            String enhancementPrompt = generateComprehensiveRewritePrompt(function, decompiledCode, functionAnalysis);
+            
+            monitor.setMessage("Getting model suggestions for comprehensive function rewrite...");
             monitor.setProgress(30);
             
-            // Get AI response with streaming
+            // Get model response with streaming
             String aiResponse;
             try {
                 long startTime = System.currentTimeMillis();
-                GPTService.GPTProvider provider = gptService.getProvider();
+                APIClient.GPTProvider provider = apiClient.getProvider();
                 
                 // Print analysis header using console
                 if (console != null) {
                     console.printAnalysisHeader("✨ Comprehensive Function Rewrite", function.getName(), 
-                        provider.toString(), gptService.getModel(), enhancementPrompt.length());
+                        provider.toString(), apiClient.getModel(), enhancementPrompt.length());
                 }
                 
                 final StringBuilder streamBuffer = new StringBuilder();
                 
-                aiResponse = gptService.sendRequest(enhancementPrompt, new GPTService.StreamCallback() {
+                aiResponse = apiClient.sendRequest(enhancementPrompt, new APIClient.StreamCallback() {
                     private boolean isFirstResponse = true;
                     
                     @Override
@@ -127,23 +150,23 @@ public class CodeEnhancementService {
                         }
                         
                         // Update monitor with simple streaming indicator
-                        monitor.setMessage("Streaming AI response...");
+                        monitor.setMessage("Streaming model response...");
                     }
                     
                     @Override
                     public void onComplete(String fullContent) {
                         long duration = System.currentTimeMillis() - startTime;
                         if (console != null) {
-                            console.printStreamComplete("AI analysis", duration, fullContent.length());
+                            console.printStreamComplete("model analysis", duration, fullContent.length());
                         }
-                        monitor.setMessage("Processing AI suggestions...");
+                        monitor.setMessage("Processing model suggestions...");
                         monitor.setProgress(70);
                     }
                     
                     @Override
                     public void onError(Exception error) {
                         if (console != null) {
-                            console.printStreamError("AI analysis", error.getMessage());
+                            console.printStreamError("model analysis", error.getMessage());
                         }
                     }
                 });
@@ -158,11 +181,14 @@ public class CodeEnhancementService {
             
             monitor.setProgress(70);
             
-            // Parse AI response for comprehensive rewrite specification
+            // Parse model response for comprehensive rewrite specification
             ComprehensiveRewriteSpec rewriteSpec = parseComprehensiveRewriteResponse(aiResponse);
             
             monitor.setMessage("Applying comprehensive function rewrite...");
             monitor.setProgress(80);
+            
+            // Extract variable information for the rewrite application
+            Map<String, VariableInfo> variableMap = extractVariableInformation(function, highFunction);
             
             // Apply the comprehensive rewrite changes
             result = applyComprehensiveRewrite(function, program, variableMap, rewriteSpec, monitor);
@@ -175,7 +201,7 @@ public class CodeEnhancementService {
             // Provide more specific error messages for common timeout issues
             if (e.getMessage() != null && e.getMessage().toLowerCase().contains("timeout")) {
                 errorMsg = "Function analysis timed out. This can happen with very large or complex functions. " +
-                          "Try: 1) Check your internet connection, 2) Use a faster AI model, 3) Break down large functions, or 4) Try again later.";
+                          "Try: 1) Check your internet connection, 2) Use a faster model, 3) Break down large functions, or 4) Try again later.";
             }
             
             result.errors.add(errorMsg);
@@ -248,9 +274,45 @@ public class CodeEnhancementService {
     }
     
     /**
-     * Generate comprehensive enhancement prompt for AI analysis
+     * Extract variable analyses from function for domain model
      */
-    private String generateComprehensiveEnhancementPrompt(Function function, String decompiledCode, Map<String, VariableInfo> variables) {
+    private List<VariableAnalysis> extractVariableAnalyses(Function function, HighFunction highFunction) {
+        List<VariableAnalysis> analyses = new ArrayList<>();
+        
+        // Get function parameters
+        Parameter[] parameters = function.getParameters();
+        for (Parameter param : parameters) {
+            analyses.add(new VariableAnalysis(param.getName(), param.getDataType(), true));
+        }
+        
+        // Get local variables
+        Variable[] localVars = function.getLocalVariables();
+        for (Variable var : localVars) {
+            analyses.add(new VariableAnalysis(var.getName(), var.getDataType(), false));
+        }
+        
+        // Add any additional variables from HighFunction if available
+        if (highFunction != null) {
+            Iterator<HighSymbol> symbols = highFunction.getLocalSymbolMap().getSymbols();
+            while (symbols.hasNext()) {
+                HighSymbol symbol = symbols.next();
+                String symbolName = symbol.getName();
+                
+                // Check if we already have this variable
+                boolean alreadyExists = analyses.stream().anyMatch(va -> va.getName().equals(symbolName));
+                if (!alreadyExists) {
+                    analyses.add(new VariableAnalysis(symbolName, symbol.getDataType(), symbol.isParameter()));
+                }
+            }
+        }
+        
+        return analyses;
+    }
+    
+    /**
+     * Generate comprehensive rewrite prompt for model analysis
+     */
+    private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible.\n\n");
         prompt.append("Current function: ").append(function.getName()).append("\n\n");
@@ -264,18 +326,18 @@ public class CodeEnhancementService {
         StringBuilder wellNamedVars = new StringBuilder();
         StringBuilder undefinedTypes = new StringBuilder();
         
-        for (VariableInfo info : variables.values()) {
-            String varDesc = "- " + info.name + " (" + info.type + ")";
+        for (VariableAnalysis varAnalysis : functionAnalysis.getVariables()) {
+            String varDesc = "- " + varAnalysis.getName() + " (" + varAnalysis.getTypeDisplayName() + ")";
             
-            if (info.isParameter) {
+            if (varAnalysis.isParameter()) {
                 parameters.append(varDesc).append("\n");
-            } else if (info.name.matches("^[iufl]Var\\d+$")) {
+            } else if (varAnalysis.getName().matches("^[iufl]Var\\d+$")) {
                 // Decompiler temporaries like iVar1, uVar2, etc.
                 tempVars.append(varDesc).append(" - decompiler temporary\n");
-            } else if (info.name.matches("^[ui]Stack_\\d+$|^local_\\d+$")) {
+            } else if (varAnalysis.getName().matches("^[ui]Stack_\\d+$|^local_\\d+$")) {
                 // Stack variables like uStack_20, local_38, etc.
                 stackVars.append(varDesc).append(" - stack variable\n");
-            } else if (info.name.matches("^[A-Z][a-zA-Z0-9_]*$") && info.name.length() > 3) {
+            } else if (varAnalysis.getName().matches("^[A-Z][a-zA-Z0-9_]*$") && varAnalysis.getName().length() > 3) {
                 // Variables that already have reasonable names (like ControlPc, FunctionEntry)
                 wellNamedVars.append(varDesc).append(" - already well-named\n");
             } else {
@@ -283,9 +345,8 @@ public class CodeEnhancementService {
             }
             
             // Track variables with unclear types
-            if (info.type.contains("undefined") || info.type.equals("int") || 
-                info.type.equals("uint") || info.type.equals("void*")) {
-                undefinedTypes.append("- ").append(info.name).append(" (").append(info.type)
+            if (varAnalysis.needsTypeAnalysis()) {
+                undefinedTypes.append("- ").append(varAnalysis.getName()).append(" (").append(varAnalysis.getTypeDisplayName())
                     .append(") - analyze usage to suggest better type\n");
             }
         }
@@ -371,7 +432,7 @@ public class CodeEnhancementService {
     }
     
     /**
-     * Parses AI response to extract function renames and variable renames
+     * Parses model response to extract function renames and variable renames
      * Uses simple text format only
      */
     private EnhancementSuggestions parseEnhancementResponse(String response) {
@@ -381,7 +442,7 @@ public class CodeEnhancementService {
     }
     
     /**
-     * Holds enhancement suggestions from AI
+     * Holds enhancement suggestions from model
      */
     private static class EnhancementSuggestions {
         String functionName;
@@ -390,13 +451,13 @@ public class CodeEnhancementService {
     }
     
     /**
-     * Parses comprehensive rewrite response from AI (JSON format)
+     * Parses comprehensive rewrite response from model (JSON format)
      */
     private ComprehensiveRewriteSpec parseComprehensiveRewriteResponse(String response) {
         ComprehensiveRewriteSpec spec = new ComprehensiveRewriteSpec();
         
         try {
-            // Extract JSON from response (AI might add extra text)
+            // Extract JSON from response (model might add extra text)
             int jsonStart = response.indexOf("{");
             int jsonEnd = response.lastIndexOf("}") + 1;
             
@@ -428,58 +489,62 @@ public class CodeEnhancementService {
     }
     
     /**
-     * Simple JSON parser for our specific format
+     * Parse JSON response using Ghidra's built-in Jackson ObjectMapper
      */
     private ComprehensiveRewriteSpec parseSimpleJson(String jsonStr) {
         ComprehensiveRewriteSpec spec = new ComprehensiveRewriteSpec();
-        
-        // Remove whitespace and newlines
-        jsonStr = jsonStr.replaceAll("\\s+", " ");
-        
-        // Extract function_name
-        Pattern funcPattern = Pattern.compile("\"function_name\"\\s*:\\s*\"([^\"]+)\"");
-        Matcher funcMatcher = funcPattern.matcher(jsonStr);
-        if (funcMatcher.find()) {
-            spec.functionName = funcMatcher.group(1);
+
+        try {
+            JsonNode rootNode = objectMapper.readTree(jsonStr);
+
+            // Extract function_name
+            if (rootNode.has("function_name")) {
+                spec.functionName = rootNode.get("function_name").asText();
+            }
+
+            // Extract function_prototype
+            if (rootNode.has("function_prototype")) {
+                spec.functionPrototype = rootNode.get("function_prototype").asText();
+            }
+
+            // Extract variable_renames object
+            if (rootNode.has("variable_renames")) {
+                spec.variableRenames = parseJsonObject(rootNode.get("variable_renames"));
+            }
+
+            // Extract variable_types object
+            if (rootNode.has("variable_types")) {
+                spec.variableTypes = parseJsonObject(rootNode.get("variable_types"));
+            }
+
+            // Extract comments object
+            if (rootNode.has("comments")) {
+                spec.comments = parseJsonObject(rootNode.get("comments"));
+            }
+
+        } catch (Exception e) {
+            Msg.error(this, "Failed to parse JSON response with ObjectMapper: " + e.getMessage());
+            // Fallback to text parsing
+            EnhancementSuggestions fallback = parseEnhancementResponse(jsonStr);
+            spec.functionName = fallback.functionName;
+            spec.variableRenames = fallback.variableRenames;
+            spec.variableTypes = fallback.typeHints;
         }
-        
-        // Extract function_prototype
-        Pattern protoPattern = Pattern.compile("\"function_prototype\"\\s*:\\s*\"([^\"]+)\"");
-        Matcher protoMatcher = protoPattern.matcher(jsonStr);
-        if (protoMatcher.find()) {
-            spec.functionPrototype = protoMatcher.group(1);
-        }
-        
-        // Extract variable_renames object
-        spec.variableRenames = extractJsonObject(jsonStr, "variable_renames");
-        
-        // Extract variable_types object
-        spec.variableTypes = extractJsonObject(jsonStr, "variable_types");
-        
-        // Extract comments object
-        spec.comments = extractJsonObject(jsonStr, "comments");
-        
+
         return spec;
     }
     
     /**
-     * Extract a JSON object from the string
+     * Parse a JSON object field using Jackson
      */
-    private Map<String, String> extractJsonObject(String jsonStr, String objectName) {
+    private Map<String, String> parseJsonObject(JsonNode jsonNode) {
         Map<String, String> result = new HashMap<>();
         
-        String pattern = "\"" + objectName + "\"\\s*:\\s*\\{([^}]*)\\}";
-        Pattern objPattern = Pattern.compile(pattern);
-        Matcher objMatcher = objPattern.matcher(jsonStr);
-        
-        if (objMatcher.find()) {
-            String objContent = objMatcher.group(1);
-            // Simple key-value extraction
-            Pattern kvPattern = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]+)\"");
-            Matcher kvMatcher = kvPattern.matcher(objContent);
-            
-            while (kvMatcher.find()) {
-                result.put(kvMatcher.group(1), kvMatcher.group(2));
+        if (jsonNode != null && jsonNode.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = jsonNode.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                result.put(field.getKey(), field.getValue().asText());
             }
         }
         
@@ -764,13 +829,10 @@ public class CodeEnhancementService {
         }
     }
     
-    /**
-     * Apply comment at address
-     */
     private boolean applyComment(Program program, String addressStr, String commentText) {
         try {
             Address addr = program.getAddressFactory().getAddress(addressStr);
-            program.getListing().setComment(addr, CodeUnit.PRE_COMMENT, commentText);
+            program.getListing().setComment(addr, CommentType.PRE, commentText);
             return true;
         } catch (Exception e) {
             Msg.error(this, "Error adding comment at " + addressStr, e);
@@ -1051,7 +1113,7 @@ public class CodeEnhancementService {
     }
     
     /**
-     * Holds comprehensive rewrite suggestions from AI
+     * Holds comprehensive rewrite suggestions from model
      */
     private static class ComprehensiveRewriteSpec {
         String functionName;

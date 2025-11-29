@@ -1,6 +1,6 @@
 package ghidragpt.ui;
 
-import ghidragpt.service.GPTService;
+import ghidragpt.service.APIClient;
 import ghidragpt.config.ConfigurationManager;
 
 import javax.swing.*;
@@ -13,10 +13,10 @@ import java.util.concurrent.ExecutionException;
  */
 public class ConfigurationPanel extends JPanel {
     
-    private final GPTService gptService;
+    private final APIClient apiClient;
     private final ConfigurationManager configManager;
     private final JTextField apiKeyField;
-    private final JComboBox<GPTService.GPTProvider> providerCombo;
+    private final JComboBox<APIClient.GPTProvider> providerCombo;
     private final JComboBox<String> modelCombo;
     private final JButton fetchModelsButton;
     private final JTextField customApiUrlField;
@@ -27,8 +27,8 @@ public class ConfigurationPanel extends JPanel {
     private final JButton testButton;
     private final JLabel statusLabel;
     
-    public ConfigurationPanel(GPTService gptService) {
-        this.gptService = gptService;
+    public ConfigurationPanel(APIClient apiClient) {
+        this.apiClient = apiClient;
         this.configManager = new ConfigurationManager();
         
         setLayout(new GridBagLayout());
@@ -40,7 +40,7 @@ public class ConfigurationPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 0;
         add(new JLabel("API Provider:"), gbc);
         
-        providerCombo = new JComboBox<>(GPTService.GPTProvider.values());
+        providerCombo = new JComboBox<>(APIClient.GPTProvider.values());
         providerCombo.addActionListener(e -> updateModelField());
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
         add(providerCombo, gbc);
@@ -89,7 +89,7 @@ public class ConfigurationPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 4; gbc.fill = GridBagConstraints.NONE;
         add(new JLabel("Max Tokens:"), gbc);
         
-        maxTokensSpinner = new JSpinner(new SpinnerNumberModel(GPTService.DEFAULT_MAX_TOKENS, 100, 32000, 100));
+        maxTokensSpinner = new JSpinner(new SpinnerNumberModel(APIClient.DEFAULT_MAX_TOKENS, 100, 32000, 100));
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
         add(maxTokensSpinner, gbc);
         
@@ -97,7 +97,7 @@ public class ConfigurationPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 5; gbc.fill = GridBagConstraints.NONE;
         add(new JLabel("Temperature:"), gbc);
         
-        temperatureSpinner = new JSpinner(new SpinnerNumberModel(GPTService.DEFAULT_TEMPERATURE, 0.0, 2.0, 0.1));
+        temperatureSpinner = new JSpinner(new SpinnerNumberModel(APIClient.DEFAULT_TEMPERATURE, 0.0, 2.0, 0.1));
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
         add(temperatureSpinner, gbc);
         
@@ -105,7 +105,7 @@ public class ConfigurationPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 6; gbc.fill = GridBagConstraints.NONE;
         add(new JLabel("Timeout (seconds):"), gbc);
         
-        timeoutSpinner = new JSpinner(new SpinnerNumberModel(GPTService.DEFAULT_TIMEOUT_SECONDS, 5, 300, 5));
+        timeoutSpinner = new JSpinner(new SpinnerNumberModel(APIClient.DEFAULT_TIMEOUT_SECONDS, 5, 300, 5));
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
         add(timeoutSpinner, gbc);
         
@@ -169,8 +169,8 @@ public class ConfigurationPanel extends JPanel {
         timeoutSpinner.setValue(configManager.getTimeoutSeconds());
         
         // Update visibility of custom URL field
-        GPTService.GPTProvider provider = configManager.getProvider();
-        boolean isOpenAICompatible = (provider == GPTService.GPTProvider.OPENAI_COMPATIBLE);
+        APIClient.GPTProvider provider = configManager.getProvider();
+        boolean isOpenAICompatible = (provider == APIClient.GPTProvider.OPENAI_COMPATIBLE);
         customApiUrlLabel.setVisible(isOpenAICompatible);
         customApiUrlField.setVisible(isOpenAICompatible);
         
@@ -180,13 +180,13 @@ public class ConfigurationPanel extends JPanel {
             statusLabel.setForeground(Color.BLUE);
             
             // Apply to GPT service
-            gptService.setApiKey(configManager.getApiKey());
-            gptService.setProvider(configManager.getProvider());
-            gptService.setModel(configManager.getModel());
-            gptService.setCustomApiUrl(configManager.getCustomApiUrl());
-            gptService.setMaxTokens(configManager.getMaxTokens());
-            gptService.setTemperature(configManager.getTemperature());
-            gptService.setTimeoutSeconds(configManager.getTimeoutSeconds());
+            apiClient.setApiKey(configManager.getApiKey());
+            apiClient.setProvider(configManager.getProvider());
+            apiClient.setModel(configManager.getModel());
+            apiClient.setCustomApiUrl(configManager.getCustomApiUrl());
+            apiClient.setMaxTokens(configManager.getMaxTokens());
+            apiClient.setTemperature(configManager.getTemperature());
+            apiClient.setTimeoutSeconds(configManager.getTimeoutSeconds());
         } else {
             statusLabel.setText("Configuration incomplete");
             statusLabel.setForeground(Color.ORANGE);
@@ -194,13 +194,13 @@ public class ConfigurationPanel extends JPanel {
     }
     
     private void updateModelField() {
-        GPTService.GPTProvider provider = (GPTService.GPTProvider) providerCombo.getSelectedItem();
+        APIClient.GPTProvider provider = (APIClient.GPTProvider) providerCombo.getSelectedItem();
         
         // Reset all configuration fields when provider changes
         resetConfigurationFields();
         
         // Show/hide custom API URL field based on provider
-        boolean isOpenAICompatible = (provider == GPTService.GPTProvider.OPENAI_COMPATIBLE);
+        boolean isOpenAICompatible = (provider == APIClient.GPTProvider.OPENAI_COMPATIBLE);
         customApiUrlLabel.setVisible(isOpenAICompatible);
         customApiUrlField.setVisible(isOpenAICompatible);
         
@@ -210,10 +210,10 @@ public class ConfigurationPanel extends JPanel {
         modelCombo.setSelectedItem("<model>");
         
         // Set provider-specific defaults
-        if (provider == GPTService.GPTProvider.OLLAMA) {
+        if (provider == APIClient.GPTProvider.OLLAMA) {
             apiKeyField.setEnabled(false);  // Ollama doesn't require API key
             apiKeyField.setText("Not required for Ollama (local)");
-        } else if (provider == GPTService.GPTProvider.OPENAI_COMPATIBLE) {
+        } else if (provider == APIClient.GPTProvider.OPENAI_COMPATIBLE) {
             apiKeyField.setEnabled(true);
             if (apiKeyField.getText().equals("Not required for Ollama (local)")) {
                 apiKeyField.setText("");
@@ -244,23 +244,23 @@ public class ConfigurationPanel extends JPanel {
         apiKeyField.setEnabled(true);
     }    private void saveConfiguration() {
         String apiKey = apiKeyField.getText().trim();
-        GPTService.GPTProvider selectedProvider = (GPTService.GPTProvider) providerCombo.getSelectedItem();
+        APIClient.GPTProvider selectedProvider = (APIClient.GPTProvider) providerCombo.getSelectedItem();
         String customApiUrl = customApiUrlField.getText().trim();
         
         // All providers require API key except Ollama
-        if (selectedProvider != GPTService.GPTProvider.OLLAMA && apiKey.isEmpty()) {
+        if (selectedProvider != APIClient.GPTProvider.OLLAMA && apiKey.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter an API key", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
         
         // OpenAI Compatible requires custom URL
-        if (selectedProvider == GPTService.GPTProvider.OPENAI_COMPATIBLE && customApiUrl.isEmpty()) {
+        if (selectedProvider == APIClient.GPTProvider.OPENAI_COMPATIBLE && customApiUrl.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter a custom API URL", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
         
         // For Ollama, clear any placeholder text from API key field
-        if (selectedProvider == GPTService.GPTProvider.OLLAMA) {
+        if (selectedProvider == APIClient.GPTProvider.OLLAMA) {
             apiKey = "";  // Don't save placeholder text
         }
         
@@ -275,13 +275,13 @@ public class ConfigurationPanel extends JPanel {
         configManager.saveConfiguration();
         
         // Apply to GPT service
-        gptService.setApiKey(apiKey);
-        gptService.setProvider(selectedProvider);
-        gptService.setModel(getSelectedModel());
-        gptService.setCustomApiUrl(customApiUrl);
-        gptService.setMaxTokens((Integer) maxTokensSpinner.getValue());
-        gptService.setTemperature((Double) temperatureSpinner.getValue());
-        gptService.setTimeoutSeconds((Integer) timeoutSpinner.getValue());
+        apiClient.setApiKey(apiKey);
+        apiClient.setProvider(selectedProvider);
+        apiClient.setModel(getSelectedModel());
+        apiClient.setCustomApiUrl(customApiUrl);
+        apiClient.setMaxTokens((Integer) maxTokensSpinner.getValue());
+        apiClient.setTemperature((Double) temperatureSpinner.getValue());
+        apiClient.setTimeoutSeconds((Integer) timeoutSpinner.getValue());
         
         statusLabel.setText("Configuration saved");
         statusLabel.setForeground(Color.BLUE);
@@ -294,12 +294,12 @@ public class ConfigurationPanel extends JPanel {
     private void testConnection() {
         // First update the GPTService with current UI values
         String apiKey = apiKeyField.getText().trim();
-        GPTService.GPTProvider selectedProvider = (GPTService.GPTProvider) providerCombo.getSelectedItem();
+        APIClient.GPTProvider selectedProvider = (APIClient.GPTProvider) providerCombo.getSelectedItem();
         String model = getSelectedModel();
         String customApiUrl = customApiUrlField.getText().trim();
         
         // Validate inputs before testing
-        if (selectedProvider != GPTService.GPTProvider.OLLAMA && apiKey.isEmpty()) {
+        if (selectedProvider != APIClient.GPTProvider.OLLAMA && apiKey.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter an API key", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
@@ -309,16 +309,16 @@ public class ConfigurationPanel extends JPanel {
             return;
         }
         
-        if (selectedProvider == GPTService.GPTProvider.OPENAI_COMPATIBLE && customApiUrl.isEmpty()) {
+        if (selectedProvider == APIClient.GPTProvider.OPENAI_COMPATIBLE && customApiUrl.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter a custom API URL", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
         
         // Apply current UI values to GPTService for testing
-        gptService.setApiKey(apiKey);
-        gptService.setProvider(selectedProvider);
-        gptService.setModel(model);
-        gptService.setCustomApiUrl(customApiUrl);
+        apiClient.setApiKey(apiKey);
+        apiClient.setProvider(selectedProvider);
+        apiClient.setModel(model);
+        apiClient.setCustomApiUrl(customApiUrl);
 
         testButton.setEnabled(false);
         testButton.setText("Testing...");
@@ -327,7 +327,7 @@ public class ConfigurationPanel extends JPanel {
         SwingWorker<String, Void> worker = new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() throws Exception {
-                return gptService.sendRequest("Hello, this is a test message. Please respond with 'Connection successful'.");
+                return apiClient.sendRequest("Hello, this is a test message. Please respond with 'Connection successful'.");
             }
             
             @Override
@@ -374,19 +374,19 @@ public class ConfigurationPanel extends JPanel {
         fetchModelsButton.setText("Fetching...");
         
         // Get current provider settings
-        GPTService.GPTProvider selectedProvider = (GPTService.GPTProvider) providerCombo.getSelectedItem();
+        APIClient.GPTProvider selectedProvider = (APIClient.GPTProvider) providerCombo.getSelectedItem();
         String apiKey = apiKeyField.getText().trim();
         String customApiUrl = customApiUrlField.getText().trim();
         
         // Validate inputs before fetching
-        if (selectedProvider != GPTService.GPTProvider.OLLAMA && apiKey.isEmpty()) {
+        if (selectedProvider != APIClient.GPTProvider.OLLAMA && apiKey.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter an API key first", "Error", JOptionPane.ERROR_MESSAGE);
             fetchModelsButton.setEnabled(true);
             fetchModelsButton.setText("Fetch");
             return;
         }
         
-        if (selectedProvider == GPTService.GPTProvider.OPENAI_COMPATIBLE && customApiUrl.isEmpty()) {
+        if (selectedProvider == APIClient.GPTProvider.OPENAI_COMPATIBLE && customApiUrl.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter a custom API URL first", "Error", JOptionPane.ERROR_MESSAGE);
             fetchModelsButton.setEnabled(true);
             fetchModelsButton.setText("Fetch");
@@ -394,15 +394,15 @@ public class ConfigurationPanel extends JPanel {
         }
         
         // Apply current settings to GPT service for fetching
-        gptService.setApiKey(apiKey);
-        gptService.setProvider(selectedProvider);
-        gptService.setCustomApiUrl(customApiUrl);
+        apiClient.setApiKey(apiKey);
+        apiClient.setProvider(selectedProvider);
+        apiClient.setCustomApiUrl(customApiUrl);
         
         // Fetch in background thread
         SwingWorker<List<String>, Void> worker = new SwingWorker<List<String>, Void>() {
             @Override
             protected List<String> doInBackground() throws Exception {
-                return gptService.fetchAvailableModels();
+                return apiClient.fetchAvailableModels();
             }
             
             @Override

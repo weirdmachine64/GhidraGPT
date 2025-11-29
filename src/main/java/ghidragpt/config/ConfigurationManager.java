@@ -1,6 +1,6 @@
 package ghidragpt.config;
 
-import ghidragpt.service.GPTService;
+import ghidragpt.service.APIClient;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -115,19 +115,19 @@ public class ConfigurationManager {
     /**
      * Gets the provider
      */
-    public GPTService.GPTProvider getProvider() {
-        String providerName = properties.getProperty(PROVIDER_PROPERTY, GPTService.GPTProvider.OPENAI.name());
+    public APIClient.GPTProvider getProvider() {
+        String providerName = properties.getProperty(PROVIDER_PROPERTY, APIClient.GPTProvider.OPENAI.name());
         try {
-            return GPTService.GPTProvider.valueOf(providerName);
+            return APIClient.GPTProvider.valueOf(providerName);
         } catch (IllegalArgumentException e) {
-            return GPTService.GPTProvider.OPENAI; // Default fallback
+            return APIClient.GPTProvider.OPENAI; // Default fallback
         }
     }
     
     /**
      * Sets the provider
      */
-    public void setProvider(GPTService.GPTProvider provider) {
+    public void setProvider(APIClient.GPTProvider provider) {
         properties.setProperty(PROVIDER_PROPERTY, provider.name());
     }
     
@@ -149,7 +149,7 @@ public class ConfigurationManager {
      * Gets the max tokens
      */
     public int getMaxTokens() {
-        return Integer.parseInt(properties.getProperty(MAX_TOKENS_PROPERTY, String.valueOf(GPTService.DEFAULT_MAX_TOKENS)));
+        return Integer.parseInt(properties.getProperty(MAX_TOKENS_PROPERTY, String.valueOf(APIClient.DEFAULT_MAX_TOKENS)));
     }
     
     /**
@@ -163,7 +163,7 @@ public class ConfigurationManager {
      * Gets the temperature
      */
     public double getTemperature() {
-        return Double.parseDouble(properties.getProperty(TEMPERATURE_PROPERTY, String.valueOf(GPTService.DEFAULT_TEMPERATURE)));
+        return Double.parseDouble(properties.getProperty(TEMPERATURE_PROPERTY, String.valueOf(APIClient.DEFAULT_TEMPERATURE)));
     }
     
     /**
@@ -179,12 +179,12 @@ public class ConfigurationManager {
     public boolean isConfigured() {
         String apiKey = getApiKey();
         String model = getModel();
-        GPTService.GPTProvider provider = getProvider();
+        APIClient.GPTProvider provider = getProvider();
         
         // Ollama doesn't require API key, all others do
-        if (provider == GPTService.GPTProvider.OLLAMA) {
+        if (provider == APIClient.GPTProvider.OLLAMA) {
             return !model.trim().isEmpty();
-        } else if (provider == GPTService.GPTProvider.OPENAI_COMPATIBLE) {
+        } else if (provider == APIClient.GPTProvider.OPENAI_COMPATIBLE) {
             // OpenAI Compatible requires API key, model, and custom URL
             String customUrl = getCustomApiUrl();
             return !apiKey.trim().isEmpty() && !model.trim().isEmpty() && !customUrl.trim().isEmpty();
@@ -204,11 +204,11 @@ public class ConfigurationManager {
      * Gets the API timeout in seconds
      */
     public int getTimeoutSeconds() {
-        String timeoutStr = properties.getProperty(TIMEOUT_PROPERTY, String.valueOf(GPTService.DEFAULT_TIMEOUT_SECONDS));
+        String timeoutStr = properties.getProperty(TIMEOUT_PROPERTY, String.valueOf(APIClient.DEFAULT_TIMEOUT_SECONDS));
         try {
             return Integer.parseInt(timeoutStr);
         } catch (NumberFormatException e) {
-            return GPTService.DEFAULT_TIMEOUT_SECONDS;
+            return APIClient.DEFAULT_TIMEOUT_SECONDS;
         }
     }
     
