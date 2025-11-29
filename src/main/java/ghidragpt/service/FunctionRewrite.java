@@ -117,8 +117,8 @@ public class FunctionRewrite {
             
             // Get model response with streaming
             String aiResponse;
+            long startTime = System.currentTimeMillis();
             try {
-                long startTime = System.currentTimeMillis();
                 APIClient.GPTProvider provider = apiClient.getProvider();
                 
                 // Print analysis header using console
@@ -155,10 +155,7 @@ public class FunctionRewrite {
                     
                     @Override
                     public void onComplete(String fullContent) {
-                        long duration = System.currentTimeMillis() - startTime;
-                        if (console != null) {
-                            console.printStreamComplete("model analysis", duration, fullContent.length());
-                        }
+                        // Don't print completion message here - wait until JSON is successfully parsed
                         monitor.setMessage("Processing model suggestions...");
                         monitor.setProgress(70);
                     }
@@ -183,6 +180,12 @@ public class FunctionRewrite {
             
             // Parse model response for comprehensive rewrite specification
             ComprehensiveRewriteSpec rewriteSpec = parseComprehensiveRewriteResponse(aiResponse);
+            
+            // Now that JSON parsing is successful, print the completion message
+            long duration = System.currentTimeMillis() - startTime;
+            if (console != null) {
+                console.printStreamComplete("model analysis", duration, aiResponse.length());
+            }
             
             monitor.setMessage("Applying comprehensive function rewrite...");
             monitor.setProgress(80);
@@ -855,7 +858,7 @@ public class FunctionRewrite {
     }
     
     /**
-     * Check if full commit is required (copied from GhidraMCP)
+     * Check if full commit is required 
      */
     private static boolean checkFullCommit(HighSymbol highSymbol, HighFunction hfunction) {
         if (highSymbol != null && !highSymbol.isParameter()) {
@@ -884,7 +887,7 @@ public class FunctionRewrite {
     }
     
     /**
-     * Resolve data type from string (similar to GhidraMCP implementation)
+     * Resolve data type from string
      */
     private DataType resolveDataType(DataTypeManager dtm, String typeName) {
         // First try to find exact match
