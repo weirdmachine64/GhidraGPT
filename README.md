@@ -42,13 +42,16 @@ A powerful Ghidra plugin that integrates Large Language Models (LLMs) directly i
 
 2. **Build the Plugin**:
    ```bash
-   ./build.sh
+   GHIDRA_INSTALL_DIR=/path/to/ghidra gradle build
    ```
+   The built extension will be at `build/distributions/GhidraGPT-x.y.z.zip`
 
 3. **Install in Ghidra**:
-   ```bash
-   ./install.sh
-   ```
+   - Open Ghidra
+   - Go to `File → Install Extensions`
+   - Click the `+` button and select `build/distributions/GhidraGPT-x.y.z.zip`
+   - Restart Ghidra
+   - Enable the plugin via `File → Configure → Analysis → GhidraGPTPlugin`
 
 4. **Configure API Keys**:
    - Open Ghidra and navigate to the GhidraGPT configuration panel

@@ -14,7 +14,8 @@ import ghidragpt.config.ConfigurationManager;
 import javax.swing.*;
 
 /**
- * Main plugin class for GhidraGPT - integrates GPT models into Ghidra for code analysis
+ * Main plugin class for GhidraGPT - integrates GPT models into Ghidra for code
+ * analysis
  */
 //@formatter:off
 @PluginInfo(
@@ -25,14 +26,14 @@ import javax.swing.*;
     description = "Integrates GPT models (OpenAI GPT, Anthropic Claude, etc.) into Ghidra for " +
                   "automated code analysis, variable renaming, vulnerability detection, and explanation generation."
 )
-public class GhidraGPT extends ProgramPlugin {
+public class GhidraGPTPlugin extends ProgramPlugin {
     
     private Provider provider;
     private APIClient apiClient;
     private ConfigurationManager configManager;
     private boolean configurationChecked = false;
     
-    public GhidraGPT(PluginTool tool) {
+    public GhidraGPTPlugin(PluginTool tool) {
         super(tool);
         apiClient = new APIClient();
         configManager = new ConfigurationManager();
