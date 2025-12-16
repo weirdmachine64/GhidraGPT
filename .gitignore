@@ -1,3 +1,8 @@
+# Maven
+target/
+dependency-reduced-pom.xml
+
+# Gradle (legacy)
 gradlew.bat
 .gradle/
 build/

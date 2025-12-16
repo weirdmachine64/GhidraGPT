@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.ghidragpt</groupId>
+    <artifactId>GhidraGPT</artifactId>
+    <version>1.2.1</version>
+    <packaging>jar</packaging>
+
+    <name>GhidraGPT</name>
+    <description>LLM-powered code analysis and enhancement plugin for Ghidra</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <ghidra.install.dir>${env.GHIDRA_INSTALL_DIR}</ghidra.install.dir>
+    </properties>
+
+    <dependencies>
+        <!-- Ghidra dependencies (provided - not bundled) -->
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Generic</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/Generic/lib/Generic.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>SoftwareModeling</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/SoftwareModeling/lib/SoftwareModeling.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Decompiler</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Features/Decompiler/lib/Decompiler.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Base</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Features/Base/lib/Base.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Utility</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/Utility/lib/Utility.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Docking</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/Docking/lib/Docking.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Project</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/Project/lib/Project.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Gui</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/Gui/lib/Gui.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>ghidra</groupId>
+            <artifactId>Help</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${ghidra.install.dir}/Ghidra/Framework/Help/lib/Help.jar</systemPath>
+        </dependency>
+
+        <!-- HTTP client for API calls (bundled in fat JAR) -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Compiler plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>11</source>
+                    <target>11</target>
+                    <compilerArgs>
+                        <arg>-Xlint:unchecked</arg>
+                        <arg>-Xlint:deprecation</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <!-- Shade plugin to create fat JAR with bundled dependencies -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Implementation-Title>GhidraGPT Plugin</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                        <Implementation-Vendor>GhidraGPT</Implementation-Vendor>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Assembly plugin to create Ghidra extension ZIP -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>create-ghidra-extension</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/ghidra-extension.xml</descriptor>
+                            </descriptors>
+                            <finalName>GhidraGPT-${project.version}</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

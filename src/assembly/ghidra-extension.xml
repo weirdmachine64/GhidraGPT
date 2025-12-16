@@ -1,0 +1,38 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 http://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>ghidra-extension</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>true</includeBaseDirectory>
+    <baseDirectory>GhidraGPT</baseDirectory>
+
+    <!-- Include the shaded JAR in lib/ -->
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.artifactId}-${project.version}.jar</source>
+            <outputDirectory>lib</outputDirectory>
+            <destName>${project.artifactId}-${project.version}.jar</destName>
+        </file>
+        <file>
+            <source>extension.properties</source>
+            <outputDirectory></outputDirectory>
+        </file>
+        <file>
+            <source>Module.manifest</source>
+            <outputDirectory></outputDirectory>
+        </file>
+    </files>
+
+    <!-- Include data directory -->
+    <fileSets>
+        <fileSet>
+            <directory>data</directory>
+            <outputDirectory>data</outputDirectory>
+            <includes>
+                <include>**/*</include>
+            </includes>
+        </fileSet>
+    </fileSets>
+</assembly>
