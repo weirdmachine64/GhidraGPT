@@ -317,7 +317,8 @@ public class FunctionRewrite {
      */
     private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible.\n\n");
+        // TIW:
+        prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible. Always use camel case names.\n\n");
         prompt.append("Current function: ").append(function.getName()).append("\n\n");
         prompt.append("Decompiled code:\n").append(decompiledCode).append("\n\n");
         
@@ -561,6 +562,7 @@ public class FunctionRewrite {
         // Extract function name suggestion
         Pattern functionPattern = Pattern.compile("FUNCTION_NAME:\\s*([\\w_]+)", Pattern.CASE_INSENSITIVE);
         Matcher functionMatcher = functionPattern.matcher(response);
+
         if (functionMatcher.find()) {
             String newFunctionName = functionMatcher.group(1).trim();
             if (isValidFunctionName(newFunctionName)) {
@@ -609,7 +611,8 @@ public class FunctionRewrite {
         boolean success = false;
         
         try {
-            // 1. Apply function rename first
+            // TIW:
+            /*// 1. Apply function rename first
             if (spec.functionName != null && !spec.functionName.equals(function.getName())) {
                 try {
                     function.setName(spec.functionName, SourceType.USER_DEFINED);
@@ -631,7 +634,7 @@ public class FunctionRewrite {
                     result.errors.add("Failed to update function prototype: " + e.getMessage());
                     Msg.error(this, "Prototype update failed", e);
                 }
-            }
+            }*/
             
             // 3. Apply variable renames using HighFunctionDBUtil
             int renameCount = 0;
