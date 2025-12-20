@@ -5,6 +5,7 @@ dependency-reduced-pom.xml
 # Gradle (legacy)
 gradlew.bat
 .gradle/
+.vs/
 build/
 *.iml
 *.ipr
