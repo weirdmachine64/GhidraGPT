@@ -19,6 +19,9 @@ import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.Structure;
+import ghidra.program.model.data.DataTypeComponent;
+import ghidra.program.model.data.Pointer;
 import ghidra.program.model.data.Undefined1DataType;
 import ghidra.app.services.DataTypeManagerService;
 import ghidra.app.util.parser.FunctionSignatureParser;
@@ -374,8 +377,6 @@ public class FunctionRewrite {
             prompt.append("Variables with unclear types (suggest better types):\n").append(undefinedTypes).append("\n");
         }
         
-
-        
         prompt.append("Analysis Instructions:\n");
         prompt.append("1. Suggest a descriptive function name based on what the function does\n");
         prompt.append("2. Rename variables to reflect their purpose/usage\n");
@@ -411,15 +412,17 @@ public class FunctionRewrite {
         prompt.append("{\n");
         prompt.append("  \"function_name\": \"handle_security_failure\",\n");
         prompt.append("  \"variable_renames\": {\n");
-        prompt.append("    \"param_1\": \"violation_address\",\n");
-        prompt.append("    \"local_38\": \"image_base_buffer\",\n");
-        prompt.append("    \"uStack_20\": \"stack_parameter\"\n");
+        prompt.append("    \"param_1\": \"violationAddress\",\n");
+        prompt.append("    \"local_38\": \"imageBaseBuffer\",\n");
+        prompt.append("    \"uStack_20\": \"stackParameter\",\n");
+        prompt.append("    \"mbr_0x18\": \"m_rotationX\",\n");
+        prompt.append("    \"field13_0x38\": \"m_defaultFieldOfView\"\n");
         prompt.append("  },\n");
         prompt.append("  \"variable_types\": {\n");
-        prompt.append("    \"violation_address\": \"PVOID\",\n");
-        prompt.append("    \"image_base_buffer\": \"DWORD64*\"\n");
+        prompt.append("    \"violationAddress\": \"PVOID\",\n");
+        prompt.append("    \"imageBaseBuffer\": \"DWORD64*\"\n");
         prompt.append("  },\n");
-        prompt.append("  \"function_prototype\": \"NTSTATUS handle_security_failure(PVOID violation_address, ULONG violation_code)\",\n");
+        prompt.append("  \"function_prototype\": \"NTSTATUS handle_security_failure(PVOID violationAddress, ULONG violationCode)\",\n");
         prompt.append("  \"comments\": {\n");
         prompt.append("    \"0x1400010a0\": \"Check if violation address is valid\",\n");
         prompt.append("    \"0x1400010c5\": \"Log security event before returning\"\n");
@@ -428,6 +431,7 @@ public class FunctionRewrite {
         
         prompt.append("Notes:\n");
         prompt.append("- Keep well-named variables like 'ControlPc' and 'FunctionEntry' unless you have significantly better names.\n");
+        prompt.append("- For struct/class member fields (mbr_*, field*_0x*), use m_ prefix with camelCase (e.g. mbr_0x18 -> m_rotationX, field13_0x38 -> m_defaultFieldOfView)\n");
         prompt.append("- For addresses in comments, use hex format like '0x1400010a0'\n");
         prompt.append("- Only include fields that need changes - omit empty objects\n");
         prompt.append("- Function prototype should be a complete C function signature\n");
@@ -636,8 +640,9 @@ public class FunctionRewrite {
                 }
             }*/
             
-            // 3. Apply variable renames using HighFunctionDBUtil
+            // 3. Apply variable renames using HighFunctionDBUtil, with member field fallback
             int renameCount = 0;
+            int fieldRenameCount = 0;
             for (Map.Entry<String, String> rename : spec.variableRenames.entrySet()) {
                 String oldName = rename.getKey();
                 String newName = rename.getValue();
@@ -646,6 +651,10 @@ public class FunctionRewrite {
                     renameCount++;
                     result.variableRenames.put(oldName, newName);
                     Msg.info(this, "Renamed variable: " + oldName + " -> " + newName);
+                } else if (isMemberFieldName(oldName) && applyMemberFieldRename(function, program, oldName, newName)) {
+                    fieldRenameCount++;
+                    result.variableRenames.put(oldName, newName);
+                    Msg.info(this, "Renamed struct field: " + oldName + " -> " + newName);
                 } else {
                     result.errors.add("Failed to rename variable: " + oldName);
                 }
@@ -666,18 +675,42 @@ public class FunctionRewrite {
                 }
             }
             
-            // 5. Apply comments
+            // 5. Apply comments - try inline first, collect failures for plate comment
             int commentCount = 0;
+            List<String> unplacedComments = new ArrayList<>();
             for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
                 String addressStr = comment.getKey();
                 String commentText = comment.getValue();
                 
-                if (applyComment(program, addressStr, commentText)) {
+                if (applyComment(function, program, addressStr, commentText)) {
                     commentCount++;
                     Msg.info(this, "Added comment at " + addressStr + ": " + commentText);
                 } else {
-                    result.errors.add("Failed to add comment at: " + addressStr);
+                    unplacedComments.add("[" + addressStr + "] " + commentText);
                 }
+            }
+            
+            // Write unplaced comments as a function plate comment so AI insights are not lost
+            if (!unplacedComments.isEmpty()) {
+                StringBuilder plateComment = new StringBuilder();
+                String existingComment = function.getComment();
+                if (existingComment != null && !existingComment.isEmpty()) {
+                    // Strip any previous AI Analysis Notes section before appending new ones
+                    int aiNotesIdx = existingComment.indexOf("AI Analysis Notes:");
+                    if (aiNotesIdx >= 0) {
+                        existingComment = existingComment.substring(0, aiNotesIdx).trim();
+                    }
+                    if (!existingComment.isEmpty()) {
+                        plateComment.append(existingComment).append("\n\n");
+                    }
+                }
+                plateComment.append("AI Analysis Notes:\n");
+                for (String c : unplacedComments) {
+                    plateComment.append("  ").append(c).append("\n");
+                }
+                function.setComment(plateComment.toString().trim());
+                commentCount += unplacedComments.size();
+                Msg.info(this, "Added " + unplacedComments.size() + " comment(s) as function plate comment");
             }
             
             success = true;
@@ -693,6 +726,10 @@ public class FunctionRewrite {
                 message.append("Successfully renamed ").append(renameCount).append(" variable(s)\n");
             }
             
+            if (fieldRenameCount > 0) {
+                message.append("Successfully renamed ").append(fieldRenameCount).append(" struct field(s)\n");
+            }
+            
             if (typeCount > 0) {
                 message.append("Successfully updated types for ").append(typeCount).append(" variable(s)\n");
             }
@@ -705,7 +742,7 @@ public class FunctionRewrite {
                 message.append("Function prototype updated\n");
             }
             
-            if (!result.functionRenamed && renameCount == 0 && typeCount == 0 && commentCount == 0 && spec.functionPrototype == null) {
+            if (!result.functionRenamed && renameCount == 0 && fieldRenameCount == 0 && typeCount == 0 && commentCount == 0 && spec.functionPrototype == null) {
                 message.append("No changes were applied");
             }
             
@@ -791,6 +828,82 @@ public class FunctionRewrite {
     }
     
     /**
+     * Check if a name looks like a Ghidra auto-generated member field name
+     */
+    private boolean isMemberFieldName(String name) {
+        return name.startsWith("mbr_") || name.startsWith("field");
+    }
+    
+    /**
+     * Apply member field rename on the struct data type.
+     * Extracts the hex offset from the field name, resolves the struct from the 'this' parameter,
+     * and renames the component at that offset.
+     */
+    private boolean applyMemberFieldRename(Function function, Program program, String oldName, String newName) {
+        try {
+            // Extract hex offset from field name (e.g. "mbr_0x18" -> 0x18, "field13_0x38" -> 0x38)
+            Matcher offsetMatcher = Pattern.compile("0x([0-9a-fA-F]+)").matcher(oldName);
+            if (!offsetMatcher.find()) {
+                return false;
+            }
+            int fieldOffset = Integer.parseInt(offsetMatcher.group(1), 16);
+            
+            // Get the 'this' parameter's struct type
+            Parameter[] params = function.getParameters();
+            if (params.length == 0) {
+                return false;
+            }
+            
+            // Find a pointer-to-struct parameter (typically 'this' is first)
+            Structure struct = null;
+            for (Parameter param : params) {
+                DataType paramType = param.getDataType();
+                if (paramType instanceof Pointer) {
+                    DataType baseType = ((Pointer) paramType).getDataType();
+                    if (baseType instanceof Structure) {
+                        struct = (Structure) baseType;
+                        break;
+                    }
+                }
+            }
+            
+            if (struct == null) {
+                return false;
+            }
+            
+            // Find the component at the offset
+            DataTypeComponent component = struct.getComponentAt(fieldOffset);
+            if (component == null) {
+                return false;
+            }
+            
+            // Only rename if the existing name matches the old name
+            String currentFieldName = component.getFieldName();
+            if (currentFieldName == null || !currentFieldName.equals(oldName)) {
+                // Also check the default name Ghidra generates
+                String defaultName = component.getDefaultFieldName();
+                if (currentFieldName != null && !currentFieldName.equals(oldName) && !oldName.equals(defaultName)) {
+                    return false;
+                }
+            }
+            
+            // Rename the field
+            try {
+                component.setFieldName(newName);
+                Msg.info(this, "Renamed struct field on " + struct.getName() + ": " + oldName + " -> " + newName + " at offset 0x" + Integer.toHexString(fieldOffset));
+                return true;
+            } catch (DuplicateNameException e) {
+                Msg.warn(this, "Duplicate field name: " + newName + " on struct " + struct.getName());
+                return false;
+            }
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error renaming member field " + oldName, e);
+            return false;
+        }
+    }
+    
+    /**
      * Apply variable type change using HighFunctionDBUtil
      */
     private boolean applyVariableTypeChange(Function function, Program program, String varName, String newType) {
@@ -835,11 +948,38 @@ public class FunctionRewrite {
         }
     }
     
-    private boolean applyComment(Program program, String addressStr, String commentText) {
+    /**
+     * Apply comment at a specific address within a function.
+     * Tries the address as absolute first, then as an offset from the function entry point.
+     * Only places the comment if the resolved address is within the function body.
+     */
+    private boolean applyComment(Function function, Program program, String addressStr, String commentText) {
         try {
+            Address entryPoint = function.getEntryPoint();
+            
+            // 1. Try as absolute address
             Address addr = program.getAddressFactory().getAddress(addressStr);
-            program.getListing().setComment(addr, CommentType.PRE, commentText);
-            return true;
+            if (addr != null && function.getBody().contains(addr)) {
+                program.getListing().setComment(addr, CodeUnit.PRE_COMMENT, commentText);
+                return true;
+            }
+            
+            // 2. Try as offset from function entry point
+            try {
+                long offset = Long.decode(addressStr);
+                Address offsetAddr = entryPoint.add(offset);
+                if (function.getBody().contains(offsetAddr)) {
+                    program.getListing().setComment(offsetAddr, CodeUnit.PRE_COMMENT, commentText);
+                    return true;
+                }
+            } catch (NumberFormatException | ghidra.program.model.address.AddressOutOfBoundsException e) {
+                // Not a valid offset, fall through
+            }
+            
+            // 3. Could not place comment at a valid address
+            Msg.warn(this, "Comment address '" + addressStr + "' could not be resolved within function " + function.getName());
+            return false;
+            
         } catch (Exception e) {
             Msg.error(this, "Error adding comment at " + addressStr, e);
             return false;

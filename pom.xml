@@ -6,7 +6,7 @@
 
     <groupId>io.github.ghidragpt</groupId>
     <artifactId>GhidraGPT</artifactId>
-    <version>1.2.1</version>
+    <version>1.2.11</version>
     <packaging>jar</packaging>
 
     <name>GhidraGPT</name>
