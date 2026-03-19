@@ -7,6 +7,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 
 /**
  * Dedicated console for GhidraGPT output
@@ -324,6 +325,31 @@ public class Console extends JPanel {
         });
     }
     
+    /**
+     * Print suggestion summary with per-line coloring (green for OK, red for FAIL)
+     */
+    public void printSuggestionSummary(String functionName, List<String[]> lines) {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                String timestamp = timeFormat.format(new Date());
+                document.insertString(document.getLength(), "[" + timestamp + "] ", timestampStyle);
+                document.insertString(document.getLength(), functionName + ": ", functionStyle);
+                String separator = "-".repeat(60) + "\n";
+                document.insertString(document.getLength(), "\nSuggestion Summary:\n", resultStyle);
+                document.insertString(document.getLength(), separator, resultStyle);
+                for (String[] line : lines) {
+                    // line[0] = "OK" or "FAIL", line[1] = text
+                    Style style = "OK".equals(line[0]) ? textPane.getStyle("success") : errorStyle;
+                    document.insertString(document.getLength(), line[1] + "\n", style);
+                }
+                document.insertString(document.getLength(), separator + "\n", resultStyle);
+                textPane.setCaretPosition(document.getLength());
+            } catch (BadLocationException e) {
+                // fallback
+            }
+        });
+    }
+
     private void clearConsole() {
         textPane.setText("");
         appendMessage("🧹 System", "Console cleared.", MessageType.SUCCESS);

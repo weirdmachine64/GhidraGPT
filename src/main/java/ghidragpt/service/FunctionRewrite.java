@@ -787,25 +787,22 @@ public class FunctionRewrite {
             program.endTransaction(transactionID, success);
         }
         
-        // Print per-suggestion summary to console
+        // Print per-suggestion summary to console with color
         if (console != null && !result.suggestionOutcomes.isEmpty()) {
-            StringBuilder summary = new StringBuilder();
-            summary.append("\nSuggestion Summary:\n");
-            summary.append("-".repeat(60)).append("\n");
+            List<String[]> lines = new ArrayList<>();
             for (SuggestionOutcome outcome : result.suggestionOutcomes) {
                 if (!outcome.applied) continue;
-                summary.append("[OK] [").append(outcome.category).append("] ").append(outcome.suggestion).append("\n");
+                lines.add(new String[]{"OK", "[OK] [" + outcome.category + "] " + outcome.suggestion});
             }
             for (SuggestionOutcome outcome : result.suggestionOutcomes) {
                 if (outcome.applied) continue;
-                summary.append("[FAIL] [").append(outcome.category).append("] ").append(outcome.suggestion);
+                String text = "[FAIL] [" + outcome.category + "] " + outcome.suggestion;
                 if (outcome.reason != null) {
-                    summary.append("  -> Reason: ").append(outcome.reason);
+                    text += "  -> Reason: " + outcome.reason;
                 }
-                summary.append("\n");
+                lines.add(new String[]{"FAIL", text});
             }
-            summary.append("-".repeat(60));
-            console.appendMessage(function.getName(), summary.toString(), Console.MessageType.INFO);
+            console.printSuggestionSummary(function.getName(), lines);
         }
         
         return result;
