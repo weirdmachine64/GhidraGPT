@@ -181,7 +181,7 @@ public class FunctionRewrite {
             
             monitor.setProgress(70);
             
-            // Parse model response for comprehensive rewrite specification
+            // Parsing model response for comprehensive rewrite specification
             ComprehensiveRewriteSpec rewriteSpec = parseComprehensiveRewriteResponse(aiResponse);
             
             // Now that JSON parsing is successful, print the completion message
@@ -701,10 +701,14 @@ public class FunctionRewrite {
                 String addressStr = comment.getKey();
                 String commentText = comment.getValue();
 
-                long rawAddr = Long.decode(addressStr);
-                long adjusted = rawAddr - 0x400000; // TIW: gtr2 specific
-                
-                unplacedComments.add("[0x" + Long.toHexString(adjusted) + "] " + commentText);
+                try {
+                    long rawAddr = Long.decode(addressStr);
+                    long adjusted = rawAddr - 0x400000; // TIW: gtr2 specific
+                    unplacedComments.add("[0x" + Long.toHexString(adjusted) + "] " + commentText);
+                } catch (NumberFormatException e) {
+                    // Key is not a numeric address (e.g. "case_1", "default_case")
+                    unplacedComments.add("[" + addressStr + "] " + commentText);
+                }
             }
             
             // Write unplaced comments as a function plate comment so AI insights are not lost
@@ -804,6 +808,12 @@ public class FunctionRewrite {
      */
     private boolean applyVariableRename(Function function, Program program, String oldName, String newName) {
         try {
+            // Skip 'this' auto-parameter - Ghidra does not allow renaming it
+            if ("this".equals(oldName)) {
+                Msg.info(this, "Skipping rename of auto-parameter 'this'");
+                return false;
+            }
+            
             // Decompile to get HighFunction
             DecompileResults results = decompiler.decompileFunction(function, 30, new ConsoleTaskMonitor());
             if (results == null || !results.decompileCompleted()) {
