@@ -650,6 +650,7 @@ public class FunctionRewrite {
                 if (applyMemberFieldTypeChange(function, program, varName, newType, spec.variableRenames)) {
                     fieldTypeCount++;
                     result.typeUpdates.put(varName, newType);
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Field Type", varName + " \u2192 " + newType, true, null));
                     Msg.info(this, "Changed struct field type for " + varName + " to " + newType);
                 }
             }
@@ -664,12 +665,16 @@ public class FunctionRewrite {
                 if (applyVariableRename(function, program, oldName, newName)) {
                     renameCount++;
                     result.variableRenames.put(oldName, newName);
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Variable Rename", oldName + " \u2192 " + newName, true, null));
                     Msg.info(this, "Renamed variable: " + oldName + " -> " + newName);
                 } else if (isMemberFieldName(oldName) && applyMemberFieldRename(function, program, oldName, newName)) {
                     fieldRenameCount++;
                     result.variableRenames.put(oldName, newName);
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Field Rename", oldName + " \u2192 " + newName, true, null));
                     Msg.info(this, "Renamed struct field: " + oldName + " -> " + newName);
                 } else {
+                    String reason = "this".equals(oldName) ? "Cannot rename auto-parameter 'this'" : "Variable not found in decompiler output";
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Variable Rename", oldName + " \u2192 " + newName, false, reason));
                     result.errors.add("Failed to rename variable: " + oldName);
                 }
             }
@@ -688,8 +693,10 @@ public class FunctionRewrite {
                 if (applyVariableTypeChange(function, program, varName, newType)) {
                     typeCount++;
                     result.typeUpdates.put(varName, newType);
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Type Change", varName + " \u2192 " + newType, true, null));
                     Msg.info(this, "Changed type for " + varName + " to " + newType);
                 } else {
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Type Change", varName + " \u2192 " + newType, false, "Variable not found or type could not be resolved"));
                     result.errors.add("Failed to change type for variable: " + varName);
                 }
             }
@@ -731,6 +738,9 @@ public class FunctionRewrite {
                 }
                 function.setComment(plateComment.toString().trim());
                 commentCount += unplacedComments.size();
+                for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Comment", comment.getValue(), true, null));
+                }
                 Msg.info(this, "Added " + unplacedComments.size() + " comment(s) as function plate comment");
             }
             
@@ -775,6 +785,23 @@ public class FunctionRewrite {
             
         } finally {
             program.endTransaction(transactionID, success);
+        }
+        
+        // Print per-suggestion summary to console
+        if (console != null && !result.suggestionOutcomes.isEmpty()) {
+            StringBuilder summary = new StringBuilder();
+            summary.append("\nSuggestion Summary:\n");
+            summary.append("-".repeat(60)).append("\n");
+            for (SuggestionOutcome outcome : result.suggestionOutcomes) {
+                String status = outcome.applied ? "[OK]" : "[FAIL]";
+                summary.append(status).append(" [").append(outcome.category).append("] ").append(outcome.suggestion);
+                if (!outcome.applied && outcome.reason != null) {
+                    summary.append("  -> Reason: ").append(outcome.reason);
+                }
+                summary.append("\n");
+            }
+            summary.append("-".repeat(60));
+            console.appendMessage(function.getName(), summary.toString(), Console.MessageType.INFO);
         }
         
         return result;
@@ -859,26 +886,20 @@ public class FunctionRewrite {
     }
     
     /**
-     * Check if a name looks like a Ghidra auto-generated member field name
+     * Check if a name looks like a struct member field name (auto-generated or user-renamed)
      */
     private boolean isMemberFieldName(String name) {
-        return name.startsWith("mbr_") || name.startsWith("field");
+        return name.startsWith("mbr_") || name.startsWith("field") || name.startsWith("m_");
     }
     
     /**
      * Apply member field rename on the struct data type.
-     * Extracts the hex offset from the field name, resolves the struct from the 'this' parameter,
-     * and renames the component at that offset.
+     * Searches by field name across the top-level struct and all nested structs,
+     * since fields like field9_0x60 may live on a nested struct (e.g. this->m_viewStuff.field9_0x60).
+     * Falls back to offset-based lookup on the top-level struct if name search fails.
      */
     private boolean applyMemberFieldRename(Function function, Program program, String oldName, String newName) {
         try {
-            // Extract hex offset from field name (e.g. "mbr_0x18" -> 0x18, "field13_0x38" -> 0x38)
-            Matcher offsetMatcher = Pattern.compile("0x([0-9a-fA-F]+)").matcher(oldName);
-            if (!offsetMatcher.find()) {
-                return false;
-            }
-            int fieldOffset = Integer.parseInt(offsetMatcher.group(1), 16);
-            
             // Get the 'this' parameter's struct type
             Parameter[] params = function.getParameters();
             if (params.length == 0) {
@@ -886,50 +907,122 @@ public class FunctionRewrite {
             }
             
             // Find a pointer-to-struct parameter (typically 'this' is first)
-            Structure struct = null;
+            Structure topStruct = null;
             for (Parameter param : params) {
                 DataType paramType = param.getDataType();
                 if (paramType instanceof Pointer) {
                     DataType baseType = ((Pointer) paramType).getDataType();
                     if (baseType instanceof Structure) {
-                        struct = (Structure) baseType;
+                        topStruct = (Structure) baseType;
                         break;
                     }
                 }
             }
             
-            if (struct == null) {
+            if (topStruct == null) {
                 return false;
             }
             
-            // Find the component at the offset
-            DataTypeComponent component = struct.getComponentAt(fieldOffset);
-            if (component == null) {
-                return false;
+            // Strategy 1: Search by field name across struct hierarchy (handles nested structs)
+            DataTypeComponent found = findComponentByName(topStruct, oldName);
+            if (found != null) {
+                try {
+                    found.setFieldName(newName);
+                    Msg.info(this, "Renamed struct field: " + oldName + " -> " + newName);
+                    return true;
+                } catch (DuplicateNameException e) {
+                    Msg.warn(this, "Duplicate field name: " + newName);
+                    return false;
+                }
             }
             
-            // Only rename if the current field name is auto-generated (not user-named)
-            String currentFieldName = component.getFieldName();
-            if (currentFieldName != null && !isMemberFieldName(currentFieldName)) {
-                Msg.info(this, "Skipping rename for field at offset 0x" + Integer.toHexString(fieldOffset) + 
-                    " - current name '" + currentFieldName + "' appears to be user-defined");
-                return false;
+            // Strategy 2: Offset-based lookup on top-level struct (for mbr_0x18, field13_0x38 patterns)
+            Matcher offsetMatcher = Pattern.compile("0x([0-9a-fA-F]+)").matcher(oldName);
+            if (offsetMatcher.find()) {
+                int fieldOffset = Integer.parseInt(offsetMatcher.group(1), 16);
+                
+                // Try top-level struct first
+                DataTypeComponent component = topStruct.getComponentAt(fieldOffset);
+                if (component != null) {
+                    String currentFieldName = component.getFieldName();
+                    if (currentFieldName == null || isMemberFieldName(currentFieldName)) {
+                        try {
+                            component.setFieldName(newName);
+                            Msg.info(this, "Renamed struct field on " + topStruct.getName() + ": " + oldName + " -> " + newName + " at offset 0x" + Integer.toHexString(fieldOffset));
+                            return true;
+                        } catch (DuplicateNameException e) {
+                            Msg.warn(this, "Duplicate field name: " + newName + " on struct " + topStruct.getName());
+                            return false;
+                        }
+                    }
+                }
+                
+                // Try nested structs at that offset
+                DataTypeComponent nestedResult = findComponentByOffsetInNestedStructs(topStruct, fieldOffset);
+                if (nestedResult != null) {
+                    String currentFieldName = nestedResult.getFieldName();
+                    if (currentFieldName == null || isMemberFieldName(currentFieldName)) {
+                        try {
+                            nestedResult.setFieldName(newName);
+                            Msg.info(this, "Renamed nested struct field: " + oldName + " -> " + newName + " at offset 0x" + Integer.toHexString(fieldOffset));
+                            return true;
+                        } catch (DuplicateNameException e) {
+                            Msg.warn(this, "Duplicate field name: " + newName);
+                            return false;
+                        }
+                    }
+                }
             }
             
-            // Rename the field
-            try {
-                component.setFieldName(newName);
-                Msg.info(this, "Renamed struct field on " + struct.getName() + ": " + oldName + " -> " + newName + " at offset 0x" + Integer.toHexString(fieldOffset));
-                return true;
-            } catch (DuplicateNameException e) {
-                Msg.warn(this, "Duplicate field name: " + newName + " on struct " + struct.getName());
-                return false;
-            }
+            return false;
             
         } catch (Exception e) {
             Msg.error(this, "Error renaming member field " + oldName, e);
             return false;
         }
+    }
+    
+    /**
+     * Search for a component by field name in a struct and all its nested structs.
+     */
+    private DataTypeComponent findComponentByName(Structure struct, String fieldName) {
+        for (DataTypeComponent component : struct.getComponents()) {
+            String name = component.getFieldName();
+            if (fieldName.equals(name)) {
+                return component;
+            }
+            // Recurse into nested structs
+            DataType dt = component.getDataType();
+            if (dt instanceof Structure) {
+                DataTypeComponent nested = findComponentByName((Structure) dt, fieldName);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Search for a component at a given offset in nested structs (not the top-level struct).
+     */
+    private DataTypeComponent findComponentByOffsetInNestedStructs(Structure struct, int offset) {
+        for (DataTypeComponent component : struct.getComponents()) {
+            DataType dt = component.getDataType();
+            if (dt instanceof Structure) {
+                Structure nested = (Structure) dt;
+                DataTypeComponent found = nested.getComponentAt(offset);
+                if (found != null) {
+                    return found;
+                }
+                // Recurse deeper
+                DataTypeComponent deeper = findComponentByOffsetInNestedStructs(nested, offset);
+                if (deeper != null) {
+                    return deeper;
+                }
+            }
+        }
+        return null;
     }
     
     /**
@@ -1395,6 +1488,23 @@ public class FunctionRewrite {
     }
     
     /**
+     * Tracks the outcome of a single suggestion
+     */
+    public static class SuggestionOutcome {
+        public String category;   // e.g. "Variable Rename", "Type Change", "Comment"
+        public String suggestion; // human-readable description
+        public boolean applied;
+        public String reason;     // null if applied, otherwise the failure reason
+
+        public SuggestionOutcome(String category, String suggestion, boolean applied, String reason) {
+            this.category = category;
+            this.suggestion = suggestion;
+            this.applied = applied;
+            this.reason = reason;
+        }
+    }
+
+    /**
      * Holds comprehensive rewrite suggestions from model
      */
     private static class ComprehensiveRewriteSpec {
@@ -1416,6 +1526,7 @@ public class FunctionRewrite {
         public Map<String, String> variableRenames = new HashMap<>();
         public Map<String, String> typeUpdates = new HashMap<>();
         public List<String> errors = new ArrayList<>();
+        public List<SuggestionOutcome> suggestionOutcomes = new ArrayList<>();
         public String message;
         
         public String getReport() {
@@ -1448,6 +1559,20 @@ public class FunctionRewrite {
                 for (String error : errors) {
                     report.append("  - ").append(error).append("\n");
                 }
+            }
+            
+            if (!suggestionOutcomes.isEmpty()) {
+                report.append("\nSuggestion Summary:\n");
+                report.append("-".repeat(60)).append("\n");
+                for (SuggestionOutcome outcome : suggestionOutcomes) {
+                    String status = outcome.applied ? "[OK]" : "[FAIL]";
+                    report.append(status).append(" [").append(outcome.category).append("] ").append(outcome.suggestion);
+                    if (!outcome.applied && outcome.reason != null) {
+                        report.append("  -> Reason: ").append(outcome.reason);
+                    }
+                    report.append("\n");
+                }
+                report.append("-".repeat(60)).append("\n");
             }
             
             return report.toString();
