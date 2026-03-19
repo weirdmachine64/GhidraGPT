@@ -723,7 +723,7 @@ public class FunctionRewrite {
                         plateComment.append(existingComment).append("\n\n");
                     }
                 }
-                plateComment.append("AI Analysis Notes:\n");
+                plateComment.append("AI Guesswork Notes:\n");
                 for (String c : unplacedComments) {
                     plateComment.append("  ").append(c).append("\n");
                 }
