@@ -1074,7 +1074,7 @@ public class FunctionRewrite {
             // 1. Try as absolute address
             Address addr = program.getAddressFactory().getAddress(addressStr);
             if (addr != null && function.getBody().contains(addr)) {
-                program.getListing().setComment(addr, CodeUnit.EOL_COMMENT, commentText);
+                program.getListing().setComment(addr, CodeUnit.PRE_COMMENT, commentText);
                 return true;
             }
             
@@ -1085,7 +1085,7 @@ public class FunctionRewrite {
                 if (adjusted > 0) {
                     Address adjAddr = program.getAddressFactory().getDefaultAddressSpace().getAddress(adjusted);
                     if (adjAddr != null && function.getBody().contains(adjAddr)) {
-                        program.getListing().setComment(adjAddr, CodeUnit.EOL_COMMENT, commentText);
+                        program.getListing().setComment(adjAddr, CodeUnit.PRE_COMMENT, commentText);
                         return true;
                     }
                 }
@@ -1098,7 +1098,7 @@ public class FunctionRewrite {
                 long offset = Long.decode(addressStr);
                 Address offsetAddr = entryPoint.add(offset);
                 if (function.getBody().contains(offsetAddr)) {
-                    program.getListing().setComment(offsetAddr, CodeUnit.EOL_COMMENT, commentText);
+                    program.getListing().setComment(offsetAddr, CodeUnit.PRE_COMMENT, commentText);
                     return true;
                 }
             } catch (NumberFormatException | ghidra.program.model.address.AddressOutOfBoundsException e) {
