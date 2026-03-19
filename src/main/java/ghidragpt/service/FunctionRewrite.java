@@ -714,8 +714,8 @@ public class FunctionRewrite {
                 StringBuilder plateComment = new StringBuilder();
                 String existingComment = function.getComment();
                 if (existingComment != null && !existingComment.isEmpty()) {
-                    // Strip any previous AI Analysis Notes section before appending new ones
-                    int aiNotesIdx = existingComment.indexOf("AI Analysis Notes:");
+                    // Strip any previous AI Guesswork Notes section before appending new ones
+                    int aiNotesIdx = existingComment.indexOf("AI Guesswork Notes:");
                     if (aiNotesIdx >= 0) {
                         existingComment = existingComment.substring(0, aiNotesIdx).trim();
                     }
