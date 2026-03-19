@@ -793,9 +793,13 @@ public class FunctionRewrite {
             summary.append("\nSuggestion Summary:\n");
             summary.append("-".repeat(60)).append("\n");
             for (SuggestionOutcome outcome : result.suggestionOutcomes) {
-                String status = outcome.applied ? "[OK]" : "[FAIL]";
-                summary.append(status).append(" [").append(outcome.category).append("] ").append(outcome.suggestion);
-                if (!outcome.applied && outcome.reason != null) {
+                if (!outcome.applied) continue;
+                summary.append("[OK] [").append(outcome.category).append("] ").append(outcome.suggestion).append("\n");
+            }
+            for (SuggestionOutcome outcome : result.suggestionOutcomes) {
+                if (outcome.applied) continue;
+                summary.append("[FAIL] [").append(outcome.category).append("] ").append(outcome.suggestion);
+                if (outcome.reason != null) {
                     summary.append("  -> Reason: ").append(outcome.reason);
                 }
                 summary.append("\n");
@@ -1599,9 +1603,13 @@ public class FunctionRewrite {
                 report.append("\nSuggestion Summary:\n");
                 report.append("-".repeat(60)).append("\n");
                 for (SuggestionOutcome outcome : suggestionOutcomes) {
-                    String status = outcome.applied ? "[OK]" : "[FAIL]";
-                    report.append(status).append(" [").append(outcome.category).append("] ").append(outcome.suggestion);
-                    if (!outcome.applied && outcome.reason != null) {
+                    if (!outcome.applied) continue;
+                    report.append("[OK] [").append(outcome.category).append("] ").append(outcome.suggestion).append("\n");
+                }
+                for (SuggestionOutcome outcome : suggestionOutcomes) {
+                    if (outcome.applied) continue;
+                    report.append("[FAIL] [").append(outcome.category).append("] ").append(outcome.suggestion);
+                    if (outcome.reason != null) {
                         report.append("  -> Reason: ").append(outcome.reason);
                     }
                     report.append("\n");
