@@ -640,7 +640,21 @@ public class FunctionRewrite {
                 }
             }*/
             
-            // 3. Apply variable renames using HighFunctionDBUtil, with member field fallback
+            // 3. Apply member field type changes FIRST (before renames)
+            // Changing undefined1 -> float creates a proper 4-byte component that can then be renamed
+            int fieldTypeCount = 0;
+            for (Map.Entry<String, String> typeChange : spec.variableTypes.entrySet()) {
+                String varName = typeChange.getKey();
+                String newType = typeChange.getValue();
+                
+                if (applyMemberFieldTypeChange(function, program, varName, newType, spec.variableRenames)) {
+                    fieldTypeCount++;
+                    result.typeUpdates.put(varName, newType);
+                    Msg.info(this, "Changed struct field type for " + varName + " to " + newType);
+                }
+            }
+            
+            // 4. Apply variable renames using HighFunctionDBUtil, with member field fallback
             int renameCount = 0;
             int fieldRenameCount = 0;
             for (Map.Entry<String, String> rename : spec.variableRenames.entrySet()) {
@@ -660,11 +674,16 @@ public class FunctionRewrite {
                 }
             }
             
-            // 4. Apply variable type changes
+            // 5. Apply remaining variable type changes (non-member-field locals/params)
             int typeCount = 0;
             for (Map.Entry<String, String> typeChange : spec.variableTypes.entrySet()) {
                 String varName = typeChange.getKey();
                 String newType = typeChange.getValue();
+                
+                // Skip if already handled as member field type change
+                if (result.typeUpdates.containsKey(varName)) {
+                    continue;
+                }
                 
                 if (applyVariableTypeChange(function, program, varName, newType)) {
                     typeCount++;
@@ -675,7 +694,7 @@ public class FunctionRewrite {
                 }
             }
             
-            // 5. Apply comments - try inline first, collect failures for plate comment
+            // 6. Apply comments - try inline first, collect failures for plate comment
             int commentCount = 0;
             List<String> unplacedComments = new ArrayList<>();
             for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
@@ -734,6 +753,10 @@ public class FunctionRewrite {
                 message.append("Successfully updated types for ").append(typeCount).append(" variable(s)\n");
             }
             
+            if (fieldTypeCount > 0) {
+                message.append("Successfully updated types for ").append(fieldTypeCount).append(" struct field(s)\n");
+            }
+            
             if (commentCount > 0) {
                 message.append("Successfully added ").append(commentCount).append(" comment(s)\n");
             }
@@ -742,7 +765,7 @@ public class FunctionRewrite {
                 message.append("Function prototype updated\n");
             }
             
-            if (!result.functionRenamed && renameCount == 0 && fieldRenameCount == 0 && typeCount == 0 && commentCount == 0 && spec.functionPrototype == null) {
+            if (!result.functionRenamed && renameCount == 0 && fieldRenameCount == 0 && typeCount == 0 && fieldTypeCount == 0 && commentCount == 0 && spec.functionPrototype == null) {
                 message.append("No changes were applied");
             }
             
@@ -877,14 +900,12 @@ public class FunctionRewrite {
                 return false;
             }
             
-            // Only rename if the existing name matches the old name
+            // Only rename if the current field name is auto-generated (not user-named)
             String currentFieldName = component.getFieldName();
-            if (currentFieldName == null || !currentFieldName.equals(oldName)) {
-                // Also check the default name Ghidra generates
-                String defaultName = component.getDefaultFieldName();
-                if (currentFieldName != null && !currentFieldName.equals(oldName) && !oldName.equals(defaultName)) {
-                    return false;
-                }
+            if (currentFieldName != null && !isMemberFieldName(currentFieldName)) {
+                Msg.info(this, "Skipping rename for field at offset 0x" + Integer.toHexString(fieldOffset) + 
+                    " - current name '" + currentFieldName + "' appears to be user-defined");
+                return false;
             }
             
             // Rename the field
@@ -899,6 +920,98 @@ public class FunctionRewrite {
             
         } catch (Exception e) {
             Msg.error(this, "Error renaming member field " + oldName, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Apply type change to a struct member field.
+     * Resolves the original field name from the renames map to extract the hex offset.
+     * Only changes the type if the current type is undefined.
+     */
+    private boolean applyMemberFieldTypeChange(Function function, Program program, 
+            String varName, String newType, Map<String, String> variableRenames) {
+        try {
+            // The varName in variable_types uses the NEW name (post-rename).
+            // Find the original field name from the renames map.
+            String originalFieldName = null;
+            for (Map.Entry<String, String> rename : variableRenames.entrySet()) {
+                if (rename.getValue().equals(varName)) {
+                    originalFieldName = rename.getKey();
+                    break;
+                }
+            }
+            
+            if (originalFieldName == null) {
+                originalFieldName = varName;
+            }
+            
+            // Must be a member field name (original) or m_ prefixed (already renamed)
+            if (!isMemberFieldName(originalFieldName) && !varName.startsWith("m_")) {
+                return false;
+            }
+            
+            // Extract hex offset from the original field name
+            String nameForOffset = isMemberFieldName(originalFieldName) ? originalFieldName : varName;
+            Matcher offsetMatcher = Pattern.compile("0x([0-9a-fA-F]+)").matcher(nameForOffset);
+            if (!offsetMatcher.find()) {
+                return false;
+            }
+            int fieldOffset = Integer.parseInt(offsetMatcher.group(1), 16);
+            
+            // Find pointer-to-struct from parameters
+            Parameter[] params = function.getParameters();
+            if (params.length == 0) {
+                return false;
+            }
+            
+            Structure struct = null;
+            for (Parameter param : params) {
+                DataType paramType = param.getDataType();
+                if (paramType instanceof Pointer) {
+                    DataType baseType = ((Pointer) paramType).getDataType();
+                    if (baseType instanceof Structure) {
+                        struct = (Structure) baseType;
+                        break;
+                    }
+                }
+            }
+            
+            if (struct == null) {
+                return false;
+            }
+            
+            // Find the component at the offset
+            DataTypeComponent component = struct.getComponentAt(fieldOffset);
+            if (component == null) {
+                return false;
+            }
+            
+            // Only change type if current type is undefined
+            String currentTypeName = component.getDataType().getName().toLowerCase();
+            if (!currentTypeName.contains("undefined")) {
+                Msg.info(this, "Skipping type change for field at offset 0x" + Integer.toHexString(fieldOffset) + 
+                    " - current type '" + component.getDataType().getName() + "' is not undefined");
+                return false;
+            }
+            
+            // Resolve the new data type
+            DataTypeManager dtm = program.getDataTypeManager();
+            DataType dataType = resolveDataType(dtm, newType);
+            if (dataType == null) {
+                Msg.warn(this, "Could not resolve data type: " + newType);
+                return false;
+            }
+            
+            // Replace the component at the offset with the new type
+            struct.replaceAtOffset(fieldOffset, dataType, dataType.getLength(), 
+                component.getFieldName(), component.getComment());
+            Msg.info(this, "Changed struct field type on " + struct.getName() + " at offset 0x" + 
+                Integer.toHexString(fieldOffset) + ": " + currentTypeName + " -> " + newType);
+            return true;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error changing type for member field " + varName, e);
             return false;
         }
     }
@@ -967,6 +1080,15 @@ public class FunctionRewrite {
             // 2. Try as offset from function entry point
             try {
                 long offset = Long.decode(addressStr);
+                
+                // Reject small offsets that look like struct member offsets or float hex literals,
+                // not instruction addresses (e.g. 0x0, 0x4, 0x3f800000)
+                if (offset < 0x100) {
+                    Msg.info(this, "Skipping comment at offset 0x" + Long.toHexString(offset) + 
+                        " - too small, likely a struct offset, not an instruction address");
+                    return false;
+                }
+                
                 Address offsetAddr = entryPoint.add(offset);
                 if (function.getBody().contains(offsetAddr)) {
                     program.getListing().setComment(offsetAddr, CodeUnit.PRE_COMMENT, commentText);
