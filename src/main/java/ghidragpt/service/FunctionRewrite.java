@@ -1063,8 +1063,9 @@ public class FunctionRewrite {
     
     /**
      * Apply comment at a specific address within a function.
-     * Tries the address as absolute first, then as an offset from the function entry point.
-     * Only places the comment if the resolved address is within the function body.
+     * Tries the address as absolute first, then subtracts 0x400000 for rehomed binaries,
+     * then as an offset from the function entry point.
+     * Places comments as EOL (inline) comments.
      */
     private boolean applyComment(Function function, Program program, String addressStr, String commentText) {
         try {
@@ -1073,32 +1074,37 @@ public class FunctionRewrite {
             // 1. Try as absolute address
             Address addr = program.getAddressFactory().getAddress(addressStr);
             if (addr != null && function.getBody().contains(addr)) {
-                program.getListing().setComment(addr, CodeUnit.PRE_COMMENT, commentText);
+                program.getListing().setComment(addr, CodeUnit.EOL_COMMENT, commentText);
                 return true;
             }
             
-            // 2. Try as offset from function entry point
+            // 2. Try subtracting 0x400000 (AI gives original PE base addresses)
+            try {
+                long rawAddr = Long.decode(addressStr);
+                long adjusted = rawAddr - 0x400000;
+                if (adjusted > 0) {
+                    Address adjAddr = program.getAddressFactory().getDefaultAddressSpace().getAddress(adjusted);
+                    if (adjAddr != null && function.getBody().contains(adjAddr)) {
+                        program.getListing().setComment(adjAddr, CodeUnit.EOL_COMMENT, commentText);
+                        return true;
+                    }
+                }
+            } catch (NumberFormatException | ghidra.program.model.address.AddressOutOfBoundsException e) {
+                // fall through
+            }
+            
+            // 3. Try as offset from function entry point
             try {
                 long offset = Long.decode(addressStr);
-                
-                // Reject small offsets that look like struct member offsets or float hex literals,
-                // not instruction addresses (e.g. 0x0, 0x4, 0x3f800000)
-                if (offset < 0x100) {
-                    Msg.info(this, "Skipping comment at offset 0x" + Long.toHexString(offset) + 
-                        " - too small, likely a struct offset, not an instruction address");
-                    return false;
-                }
-                
                 Address offsetAddr = entryPoint.add(offset);
                 if (function.getBody().contains(offsetAddr)) {
-                    program.getListing().setComment(offsetAddr, CodeUnit.PRE_COMMENT, commentText);
+                    program.getListing().setComment(offsetAddr, CodeUnit.EOL_COMMENT, commentText);
                     return true;
                 }
             } catch (NumberFormatException | ghidra.program.model.address.AddressOutOfBoundsException e) {
-                // Not a valid offset, fall through
+                // fall through
             }
             
-            // 3. Could not place comment at a valid address
             Msg.warn(this, "Comment address '" + addressStr + "' could not be resolved within function " + function.getName());
             return false;
             
@@ -1107,7 +1113,7 @@ public class FunctionRewrite {
             return false;
         }
     }
-    
+
     /**
      * Find a symbol by name in the high function
      */
