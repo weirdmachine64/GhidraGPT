@@ -984,14 +984,18 @@ public class FunctionRewrite {
     
     /**
      * Search for a component by field name in a struct and all its nested structs.
+     * Checks the entire top level first before recursing into nested structs.
      */
     private DataTypeComponent findComponentByName(Structure struct, String fieldName) {
+        // First pass: check direct fields only
         for (DataTypeComponent component : struct.getComponents()) {
             String name = component.getFieldName();
             if (fieldName.equals(name)) {
                 return component;
             }
-            // Recurse into nested structs
+        }
+        // Second pass: recurse into nested structs
+        for (DataTypeComponent component : struct.getComponents()) {
             DataType dt = component.getDataType();
             if (dt instanceof Structure) {
                 DataTypeComponent nested = findComponentByName((Structure) dt, fieldName);
@@ -1027,7 +1031,7 @@ public class FunctionRewrite {
     
     /**
      * Apply type change to a struct member field.
-     * Resolves the original field name from the renames map to extract the hex offset.
+     * Searches by field name across nested structs, with offset-based fallback.
      * Only changes the type if the current type is undefined.
      */
     private boolean applyMemberFieldTypeChange(Function function, Program program, 
@@ -1052,38 +1056,44 @@ public class FunctionRewrite {
                 return false;
             }
             
-            // Extract hex offset from the original field name
-            String nameForOffset = isMemberFieldName(originalFieldName) ? originalFieldName : varName;
-            Matcher offsetMatcher = Pattern.compile("0x([0-9a-fA-F]+)").matcher(nameForOffset);
-            if (!offsetMatcher.find()) {
-                return false;
-            }
-            int fieldOffset = Integer.parseInt(offsetMatcher.group(1), 16);
-            
             // Find pointer-to-struct from parameters
             Parameter[] params = function.getParameters();
             if (params.length == 0) {
                 return false;
             }
             
-            Structure struct = null;
+            Structure topStruct = null;
             for (Parameter param : params) {
                 DataType paramType = param.getDataType();
                 if (paramType instanceof Pointer) {
                     DataType baseType = ((Pointer) paramType).getDataType();
                     if (baseType instanceof Structure) {
-                        struct = (Structure) baseType;
+                        topStruct = (Structure) baseType;
                         break;
                     }
                 }
             }
             
-            if (struct == null) {
+            if (topStruct == null) {
                 return false;
             }
             
-            // Find the component at the offset
-            DataTypeComponent component = struct.getComponentAt(fieldOffset);
+            // Strategy 1: Find by original field name across struct hierarchy
+            DataTypeComponent component = findComponentByName(topStruct, originalFieldName);
+            
+            // Strategy 2: Find by offset on top-level struct, then nested structs
+            if (component == null) {
+                String nameForOffset = isMemberFieldName(originalFieldName) ? originalFieldName : varName;
+                Matcher offsetMatcher = Pattern.compile("0x([0-9a-fA-F]+)").matcher(nameForOffset);
+                if (offsetMatcher.find()) {
+                    int fieldOffset = Integer.parseInt(offsetMatcher.group(1), 16);
+                    component = topStruct.getComponentAt(fieldOffset);
+                    if (component == null) {
+                        component = findComponentByOffsetInNestedStructs(topStruct, fieldOffset);
+                    }
+                }
+            }
+            
             if (component == null) {
                 return false;
             }
@@ -1091,7 +1101,7 @@ public class FunctionRewrite {
             // Only change type if current type is undefined
             String currentTypeName = component.getDataType().getName().toLowerCase();
             if (!currentTypeName.contains("undefined")) {
-                Msg.info(this, "Skipping type change for field at offset 0x" + Integer.toHexString(fieldOffset) + 
+                Msg.info(this, "Skipping type change for " + varName + 
                     " - current type '" + component.getDataType().getName() + "' is not undefined");
                 return false;
             }
@@ -1104,17 +1114,41 @@ public class FunctionRewrite {
                 return false;
             }
             
-            // Replace the component at the offset with the new type
-            struct.replaceAtOffset(fieldOffset, dataType, dataType.getLength(), 
+            // Replace the component with the new type
+            // Need to find the parent struct that owns this component
+            Structure ownerStruct = findOwnerStruct(topStruct, component);
+            if (ownerStruct == null) {
+                ownerStruct = topStruct;
+            }
+            int fieldOffset = component.getOffset();
+            ownerStruct.replaceAtOffset(fieldOffset, dataType, dataType.getLength(), 
                 component.getFieldName(), component.getComment());
-            Msg.info(this, "Changed struct field type on " + struct.getName() + " at offset 0x" + 
-                Integer.toHexString(fieldOffset) + ": " + currentTypeName + " -> " + newType);
+            Msg.info(this, "Changed struct field type: " + currentTypeName + " -> " + newType + " for " + varName);
             return true;
             
         } catch (Exception e) {
             Msg.error(this, "Error changing type for member field " + varName, e);
             return false;
         }
+    }
+    
+    /**
+     * Find the struct that directly owns a given component.
+     */
+    private Structure findOwnerStruct(Structure struct, DataTypeComponent target) {
+        for (DataTypeComponent component : struct.getComponents()) {
+            if (component == target) {
+                return struct;
+            }
+            DataType dt = component.getDataType();
+            if (dt instanceof Structure) {
+                Structure found = findOwnerStruct((Structure) dt, target);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
     
     /**
