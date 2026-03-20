@@ -57,7 +57,9 @@ public class Provider extends ComponentProvider {
 
         // Configuration tab
         JPanel configTab = new JPanel(new BorderLayout());
-        configTab.add(configPanel, BorderLayout.CENTER);
+        JScrollPane configScrollPane = new JScrollPane(configPanel);
+        configScrollPane.setBorder(null);
+        configTab.add(configScrollPane, BorderLayout.CENTER);
         JPanel buttonPanel = createButtonPanel();
         configTab.add(buttonPanel, BorderLayout.SOUTH);
 
