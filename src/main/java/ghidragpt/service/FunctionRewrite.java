@@ -509,9 +509,7 @@ public class FunctionRewrite {
         prompt.append("  \"variable_renames\": {\n");
         prompt.append("    \"param_1\": \"violationAddress\",\n");
         prompt.append("    \"local_38\": \"imageBaseBuffer\",\n");
-        prompt.append("    \"uStack_20\": \"stackParameter\",\n");
-        prompt.append("    \"mbr_0x18\": \"m_rotationX\",\n");
-        prompt.append("    \"field13_0x38\": \"m_defaultFieldOfView\"\n");
+        prompt.append("    \"uStack_20\": \"stackParameter\"\n");
         prompt.append("  },\n");
         prompt.append("  \"variable_types\": {\n");
         prompt.append("    \"violationAddress\": \"PVOID\",\n");
@@ -526,7 +524,6 @@ public class FunctionRewrite {
         
         prompt.append("Notes:\n");
         prompt.append("- Keep well-named variables like 'ControlPc' and 'FunctionEntry' unless you have significantly better names.\n");
-        prompt.append("- For struct/class member fields (mbr_*, field*_0x*), use m_ prefix with camelCase (e.g. mbr_0x18 -> m_rotationX, field13_0x38 -> m_defaultFieldOfView)\n");
         prompt.append("- For comments, use the exact hex addresses shown in the /* addr */ annotations of the decompiled code\n");
         prompt.append("- Only include fields that need changes - omit empty objects\n");
         prompt.append("- Function prototype should be a complete C function signature\n");
