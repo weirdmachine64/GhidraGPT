@@ -806,7 +806,7 @@ public class FunctionRewrite {
                 }
                 plateComment.append("AI Guesswork Notes:\n");
                 for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
-                    plateComment.append("  ").append(comment.getValue()).append("\n");
+                    plateComment.append("  [").append(comment.getKey()).append("] ").append(comment.getValue()).append("\n");
                     commentCount++;
                     result.suggestionOutcomes.add(new SuggestionOutcome("Comment", comment.getValue(), true, null));
                 }
