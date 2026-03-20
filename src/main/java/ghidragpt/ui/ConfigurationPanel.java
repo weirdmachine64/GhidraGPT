@@ -28,6 +28,7 @@ public class ConfigurationPanel extends JPanel {
     private final JLabel statusLabel;
     private final JCheckBox applyFunctionRenameCheckbox;
     private final JCheckBox applyFunctionPrototypeCheckbox;
+    private final JTextArea customInstructionsArea;
     
     public ConfigurationPanel(APIClient apiClient) {
         this.apiClient = apiClient;
@@ -136,6 +137,22 @@ public class ConfigurationPanel extends JPanel {
         gbc.insets = new Insets(2, 5, 5, 5);
         add(applyFunctionPrototypeCheckbox, gbc);
         
+        // Custom Prompt Instructions
+        gbc.gridx = 0; gbc.gridy = 11; gbc.gridwidth = 2;
+        gbc.insets = new Insets(5, 5, 2, 5);
+        add(new JLabel("Custom Prompt Instructions:"), gbc);
+        
+        customInstructionsArea = new JTextArea(3, 30);
+        customInstructionsArea.setLineWrap(true);
+        customInstructionsArea.setWrapStyleWord(true);
+        customInstructionsArea.setToolTipText("Extra instructions appended to the AI prompt (e.g. 'Always use camelCase names')");
+        JScrollPane scrollPane = new JScrollPane(customInstructionsArea);
+        scrollPane.setPreferredSize(new Dimension(300, 60));
+        gbc.gridx = 0; gbc.gridy = 12; gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(2, 5, 5, 5);
+        add(scrollPane, gbc);
+        
         // Create button panel to center buttons horizontally
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
         
@@ -150,7 +167,7 @@ public class ConfigurationPanel extends JPanel {
         buttonPanel.add(saveButton);
         
         // Add centered button panel
-        gbc.gridx = 0; gbc.gridy = 11; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 13; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.CENTER;
         gbc.insets = new Insets(10, 5, 5, 5);
@@ -160,7 +177,7 @@ public class ConfigurationPanel extends JPanel {
         // Status label
         statusLabel = new JLabel("Not configured");
         statusLabel.setForeground(Color.RED);
-        gbc.gridx = 0; gbc.gridy = 12; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 14; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.CENTER;
         gbc.insets = new Insets(5, 5, 10, 5);
@@ -170,7 +187,7 @@ public class ConfigurationPanel extends JPanel {
         // Vertical spacer to push everything to the top when panel height increases
         JPanel spacer = new JPanel();
         spacer.setOpaque(false);
-        gbc.gridx = 0; gbc.gridy = 13; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 15; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weighty = 1.0; // Take up all extra vertical space
         gbc.weightx = 1.0; // Take up all extra horizontal space
@@ -196,6 +213,7 @@ public class ConfigurationPanel extends JPanel {
         timeoutSpinner.setValue(configManager.getTimeoutSeconds());
         applyFunctionRenameCheckbox.setSelected(configManager.isApplyFunctionRename());
         applyFunctionPrototypeCheckbox.setSelected(configManager.isApplyFunctionPrototype());
+        customInstructionsArea.setText(configManager.getCustomInstructions());
         
         // Update visibility of custom URL field
         APIClient.GPTProvider provider = configManager.getProvider();
@@ -303,6 +321,7 @@ public class ConfigurationPanel extends JPanel {
         configManager.setTimeoutSeconds((Integer) timeoutSpinner.getValue());
         configManager.setApplyFunctionRename(applyFunctionRenameCheckbox.isSelected());
         configManager.setApplyFunctionPrototype(applyFunctionPrototypeCheckbox.isSelected());
+        configManager.setCustomInstructions(customInstructionsArea.getText());
         configManager.saveConfiguration();
         
         // Apply to GPT service

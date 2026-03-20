@@ -409,7 +409,14 @@ public class FunctionRewrite {
      */
     private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible. Always use camel case names.\n\n");
+        prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible.\n");
+        if (configManager != null) {
+            String customInstructions = configManager.getCustomInstructions();
+            if (customInstructions != null && !customInstructions.trim().isEmpty()) {
+                prompt.append(customInstructions.trim()).append("\n");
+            }
+        }
+        prompt.append("\n");
         prompt.append("Current function: ").append(function.getName()).append("\n\n");
         prompt.append("Decompiled code:\n").append(decompiledCode).append("\n\n");
         
