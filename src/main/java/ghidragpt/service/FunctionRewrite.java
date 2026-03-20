@@ -789,41 +789,9 @@ public class FunctionRewrite {
                 }
             }
             
-            // 6. Apply comments as PRE comments at addresses from annotated decompiled code
+            // 6. Apply all comments as a single plate comment on the function
             int commentCount = 0;
-            List<String> unplacedComments = new ArrayList<>();
-            for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
-                String addrStr = comment.getKey();
-                String commentText = comment.getValue();
-
-                boolean placed = false;
-                try {
-                    // Strip 0x prefix and resolve in the function's address space
-                    String hexAddr = addrStr.startsWith("0x") || addrStr.startsWith("0X") 
-                        ? addrStr.substring(2) : addrStr;
-                    Address addr = function.getEntryPoint().getAddress(hexAddr);
-                    if (addr != null && function.getBody().contains(addr)) {
-                        program.getListing().setComment(addr, CodeUnit.PRE_COMMENT, commentText);
-                        placed = true;
-                        commentCount++;
-                        result.suggestionOutcomes.add(new SuggestionOutcome("Comment", addrStr + ": " + commentText, true, null));
-                    } else {
-                        Msg.warn(this, "Comment address " + addrStr + " resolved to " + addr + 
-                            " but function body is " + function.getBody() + 
-                            " (entry=" + function.getEntryPoint() + ")");
-                    }
-                } catch (Exception e) {
-                    // fall through to unplaced
-                }
-
-                if (!placed) {
-                    unplacedComments.add("[" + addrStr + "] " + commentText);
-                    result.suggestionOutcomes.add(new SuggestionOutcome("Comment", addrStr + ": " + commentText, false, "Address not within function body"));
-                }
-            }
-            
-            // Write unplaced comments as a function plate comment so AI insights are not lost
-            if (!unplacedComments.isEmpty()) {
+            if (!spec.comments.isEmpty()) {
                 StringBuilder plateComment = new StringBuilder();
                 String existingComment = function.getComment();
                 if (existingComment != null && !existingComment.isEmpty()) {
@@ -837,12 +805,13 @@ public class FunctionRewrite {
                     }
                 }
                 plateComment.append("AI Guesswork Notes:\n");
-                for (String c : unplacedComments) {
-                    plateComment.append("  ").append(c).append("\n");
+                for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
+                    plateComment.append("  ").append(comment.getValue()).append("\n");
+                    commentCount++;
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Comment", comment.getValue(), true, null));
                 }
                 function.setComment(plateComment.toString().trim());
-                commentCount += unplacedComments.size();
-                Msg.info(this, "Added " + unplacedComments.size() + " unplaced comment(s) as function plate comment");
+                Msg.info(this, "Added " + commentCount + " comment(s) as function plate comment");
             }
             
             success = true;
