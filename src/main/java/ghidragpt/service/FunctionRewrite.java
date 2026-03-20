@@ -672,9 +672,11 @@ public class FunctionRewrite {
                     result.variableRenames.put(oldName, newName);
                     result.suggestionOutcomes.add(new SuggestionOutcome("Field Rename", oldName + " \u2192 " + newName, true, null));
                     Msg.info(this, "Renamed struct field: " + oldName + " -> " + newName);
+                } else if ("this".equals(oldName)) {
+                    // Skipping 'this' is expected - Ghidra does not allow renaming auto-parameters
+                    Msg.info(this, "Skipping rename of auto-parameter 'this'");
                 } else {
-                    String reason = "this".equals(oldName) ? "Cannot rename auto-parameter 'this'" : "Variable not found in decompiler output";
-                    result.suggestionOutcomes.add(new SuggestionOutcome("Variable Rename", oldName + " \u2192 " + newName, false, reason));
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Variable Rename", oldName + " \u2192 " + newName, false, "Variable not found in decompiler output"));
                     result.errors.add("Failed to rename variable: " + oldName);
                 }
             }
