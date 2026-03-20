@@ -12,6 +12,9 @@ import ghidra.program.model.pcode.HighVariable;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.decompiler.ClangTokenGroup;
+import ghidra.app.decompiler.ClangNode;
+import ghidra.app.decompiler.ClangToken;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.ConsoleTaskMonitor;
@@ -51,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.LinkedHashMap;
 
 /**
  * Comprehensive function rewrite service that combines function and variable renaming
@@ -105,6 +109,9 @@ public class FunctionRewrite {
             HighFunction highFunction = decompileResults.getHighFunction();
             String decompiledCode = decompileResults.getDecompiledFunction().getC();
             
+            // Generate address-annotated decompiled code for accurate comment placement
+            String annotatedCode = generateAddressAnnotatedCode(decompileResults);
+            
             // Create function analysis using domain model
             FunctionAnalysis functionAnalysis = new FunctionAnalysis(function, true);
             
@@ -113,7 +120,7 @@ public class FunctionRewrite {
             functionAnalysis.getVariables().addAll(variables);
             
             // Generate comprehensive rewrite prompt using PromptBuilder
-            String enhancementPrompt = generateComprehensiveRewritePrompt(function, decompiledCode, functionAnalysis);
+            String enhancementPrompt = generateComprehensiveRewritePrompt(function, annotatedCode != null ? annotatedCode : decompiledCode, functionAnalysis);
             
             monitor.setMessage("Getting model suggestions for comprehensive function rewrite...");
             monitor.setProgress(30);
@@ -316,6 +323,85 @@ public class FunctionRewrite {
     }
     
     /**
+     * Generate address-annotated decompiled code.
+     * Each statement line is prefixed with its instruction address from the decompiler token tree,
+     * so the LLM can reference exact addresses for comment placement.
+     */
+    private String generateAddressAnnotatedCode(DecompileResults decompileResults) {
+        try {
+            ClangTokenGroup markup = decompileResults.getCCodeMarkup();
+            if (markup == null) {
+                return null;
+            }
+            
+            // Flatten all tokens in order
+            List<ClangToken> allTokens = new ArrayList<>();
+            collectTokens(markup, allTokens);
+            
+            // Build lines: group tokens by line breaks, track first address per line
+            StringBuilder result = new StringBuilder();
+            StringBuilder currentLine = new StringBuilder();
+            Address lineAddr = null;
+            
+            for (ClangToken token : allTokens) {
+                String text = token.toString();
+                
+                // Check for line breaks
+                if (text.contains("\n")) {
+                    // Emit current line with address annotation
+                    String lineText = currentLine.toString();
+                    if (!lineText.trim().isEmpty()) {
+                        if (lineAddr != null) {
+                            result.append("/* ").append(lineAddr.toString()).append(" */ ");
+                        }
+                        result.append(lineText);
+                    }
+                    result.append("\n");
+                    currentLine = new StringBuilder();
+                    lineAddr = null;
+                } else {
+                    currentLine.append(text);
+                    // Capture first meaningful address for this line
+                    if (lineAddr == null) {
+                        Address tokenAddr = token.getMinAddress();
+                        if (tokenAddr != null) {
+                            lineAddr = tokenAddr;
+                        }
+                    }
+                }
+            }
+            
+            // Emit last line
+            String lineText = currentLine.toString();
+            if (!lineText.trim().isEmpty()) {
+                if (lineAddr != null) {
+                    result.append("/* ").append(lineAddr.toString()).append(" */ ");
+                }
+                result.append(lineText);
+                result.append("\n");
+            }
+            
+            return result.toString();
+        } catch (Exception e) {
+            Msg.warn(this, "Failed to generate address-annotated code: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Recursively collect all ClangTokens from a ClangNode tree in order.
+     */
+    private void collectTokens(ClangNode node, List<ClangToken> tokens) {
+        if (node instanceof ClangToken) {
+            tokens.add((ClangToken) node);
+        } else {
+            for (int i = 0; i < node.numChildren(); i++) {
+                collectTokens(node.Child(i), tokens);
+            }
+        }
+    }
+    
+    /**
      * Generate comprehensive rewrite prompt for model analysis
      */
     private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
@@ -403,7 +489,7 @@ public class FunctionRewrite {
         prompt.append("  },\n");
         prompt.append("  \"function_prototype\": \"void function_name(type param1, type param2)\",\n");
         prompt.append("  \"comments\": {\n");
-        prompt.append("    \"+0x10\": \"comment text (offset from function start)\",\n");
+        prompt.append("    \"0x414f52\": \"comment text (use address from annotated code)\",\n");
         prompt.append("    ...\n");
         prompt.append("  }\n");
         prompt.append("}\n\n");
@@ -424,15 +510,15 @@ public class FunctionRewrite {
         prompt.append("  },\n");
         prompt.append("  \"function_prototype\": \"NTSTATUS handle_security_failure(PVOID violationAddress, ULONG violationCode)\",\n");
         prompt.append("  \"comments\": {\n");
-        prompt.append("    \"+0x20\": \"Check if violation address is valid\",\n");
-        prompt.append("    \"+0x45\": \"Log security event before returning\"\n");
+        prompt.append("    \"0x1400010a0\": \"Check if violation address is valid\",\n");
+        prompt.append("    \"0x1400010c5\": \"Log security event before returning\"\n");
         prompt.append("  }\n");
         prompt.append("}\n\n");
         
         prompt.append("Notes:\n");
         prompt.append("- Keep well-named variables like 'ControlPc' and 'FunctionEntry' unless you have significantly better names.\n");
         prompt.append("- For struct/class member fields (mbr_*, field*_0x*), use m_ prefix with camelCase (e.g. mbr_0x18 -> m_rotationX, field13_0x38 -> m_defaultFieldOfView)\n");
-        prompt.append("- For comments, use offsets from function start as hex (e.g. '+0x10', '+0x20')\n");
+        prompt.append("- For comments, use the exact hex addresses shown in the /* addr */ annotations of the decompiled code\n");
         prompt.append("- Only include fields that need changes - omit empty objects\n");
         prompt.append("- Function prototype should be a complete C function signature\n");
         
@@ -703,13 +789,37 @@ public class FunctionRewrite {
                 }
             }
             
-            // 6. Apply comments - try inline first, collect failures for plate comment
+            // 6. Apply comments as PRE comments at addresses from annotated decompiled code
             int commentCount = 0;
             List<String> unplacedComments = new ArrayList<>();
             for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
-                String offsetStr = comment.getKey();
+                String addrStr = comment.getKey();
                 String commentText = comment.getValue();
-                unplacedComments.add("[" + offsetStr + "] " + commentText);
+
+                boolean placed = false;
+                try {
+                    // Strip 0x prefix and resolve in the function's address space
+                    String hexAddr = addrStr.startsWith("0x") || addrStr.startsWith("0X") 
+                        ? addrStr.substring(2) : addrStr;
+                    Address addr = function.getEntryPoint().getAddress(hexAddr);
+                    if (addr != null && function.getBody().contains(addr)) {
+                        program.getListing().setComment(addr, CodeUnit.PRE_COMMENT, commentText);
+                        placed = true;
+                        commentCount++;
+                        result.suggestionOutcomes.add(new SuggestionOutcome("Comment", addrStr + ": " + commentText, true, null));
+                    } else {
+                        Msg.warn(this, "Comment address " + addrStr + " resolved to " + addr + 
+                            " but function body is " + function.getBody() + 
+                            " (entry=" + function.getEntryPoint() + ")");
+                    }
+                } catch (Exception e) {
+                    // fall through to unplaced
+                }
+
+                if (!placed) {
+                    unplacedComments.add("[" + addrStr + "] " + commentText);
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Comment", addrStr + ": " + commentText, false, "Address not within function body"));
+                }
             }
             
             // Write unplaced comments as a function plate comment so AI insights are not lost
@@ -732,10 +842,7 @@ public class FunctionRewrite {
                 }
                 function.setComment(plateComment.toString().trim());
                 commentCount += unplacedComments.size();
-                for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
-                    result.suggestionOutcomes.add(new SuggestionOutcome("Comment", comment.getValue(), true, null));
-                }
-                Msg.info(this, "Added " + unplacedComments.size() + " comment(s) as function plate comment");
+                Msg.info(this, "Added " + unplacedComments.size() + " unplaced comment(s) as function plate comment");
             }
             
             success = true;
