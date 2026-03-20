@@ -22,6 +22,8 @@ public class ConfigurationManager {
     private static final String TEMPERATURE_PROPERTY = "api.temperature";
     private static final String TIMEOUT_PROPERTY = "api.timeout.seconds";
     private static final String CUSTOM_API_URL_PROPERTY = "api.custom.url";
+    private static final String APPLY_FUNCTION_RENAME_PROPERTY = "rewrite.apply.function.rename";
+    private static final String APPLY_FUNCTION_PROTOTYPE_PROPERTY = "rewrite.apply.function.prototype";
     
     // XOR key for API key obfuscation, not super secure but still better than plaintext
     private static final String XOR_KEY = "GhidraGPT_Sec3@Key_9f4e7a2b#8c1d6f0a@2025!";
@@ -231,6 +233,28 @@ public class ConfigurationManager {
      */
     public void setCustomApiUrl(String customApiUrl) {
         properties.setProperty(CUSTOM_API_URL_PROPERTY, customApiUrl != null ? customApiUrl : "");
+    }
+    
+    /**
+     * Whether to apply AI-suggested function renames
+     */
+    public boolean isApplyFunctionRename() {
+        return Boolean.parseBoolean(properties.getProperty(APPLY_FUNCTION_RENAME_PROPERTY, "false"));
+    }
+    
+    public void setApplyFunctionRename(boolean apply) {
+        properties.setProperty(APPLY_FUNCTION_RENAME_PROPERTY, String.valueOf(apply));
+    }
+    
+    /**
+     * Whether to apply AI-suggested function prototypes
+     */
+    public boolean isApplyFunctionPrototype() {
+        return Boolean.parseBoolean(properties.getProperty(APPLY_FUNCTION_PROTOTYPE_PROPERTY, "false"));
+    }
+    
+    public void setApplyFunctionPrototype(boolean apply) {
+        properties.setProperty(APPLY_FUNCTION_PROTOTYPE_PROPERTY, String.valueOf(apply));
     }
     
     /**

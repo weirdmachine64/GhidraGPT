@@ -43,6 +43,7 @@ import ghidragpt.utils.GhidraFunctionModifier;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.Msg;
 import ghidra.program.model.address.Address;
+import ghidragpt.config.ConfigurationManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -68,11 +69,13 @@ public class FunctionRewrite {
     private final PromptBuilder promptBuilder;
     private final ResponseParser responseParser;
     private final ObjectMapper objectMapper;
+    private final ConfigurationManager configManager;
     private GhidraFunctionModifier functionModifier;
     
-    public FunctionRewrite(APIClient apiClient, Console console) {
+    public FunctionRewrite(APIClient apiClient, Console console, ConfigurationManager configManager) {
         this.apiClient = apiClient;
         this.console = console;
+        this.configManager = configManager;
         this.decompiler = new DecompInterface();
         DecompileOptions options = new DecompileOptions();
         decompiler.setOptions(options);
@@ -406,7 +409,6 @@ public class FunctionRewrite {
      */
     private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
         StringBuilder prompt = new StringBuilder();
-        // TIW:
         prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible. Always use camel case names.\n\n");
         prompt.append("Current function: ").append(function.getName()).append("\n\n");
         prompt.append("Decompiled code:\n").append(decompiledCode).append("\n\n");
@@ -701,30 +703,35 @@ public class FunctionRewrite {
         boolean success = false;
         
         try {
-            // TIW:
-            /*// 1. Apply function rename first
-            if (spec.functionName != null && !spec.functionName.equals(function.getName())) {
+            // 1. Apply function rename if enabled in config
+            
+            if (configManager != null && configManager.isApplyFunctionRename()
+                    && spec.functionName != null && !spec.functionName.equals(function.getName())) {
                 try {
                     function.setName(spec.functionName, SourceType.USER_DEFINED);
                     result.newFunctionName = spec.functionName;
                     result.functionRenamed = true;
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Function Rename", result.originalFunctionName + " \u2192 " + spec.functionName, true, null));
                     Msg.info(this, "Renamed function: " + result.originalFunctionName + " -> " + spec.functionName);
                 } catch (DuplicateNameException | InvalidInputException e) {
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Function Rename", result.originalFunctionName + " \u2192 " + spec.functionName, false, e.getMessage()));
                     result.errors.add("Failed to rename function to " + spec.functionName + ": " + e.getMessage());
                 }
             }
             
-            // 2. Apply function prototype if specified
-            if (spec.functionPrototype != null && !spec.functionPrototype.trim().isEmpty()) {
+            // 2. Apply function prototype if enabled in config
+            if (configManager != null && configManager.isApplyFunctionPrototype()
+                    && spec.functionPrototype != null && !spec.functionPrototype.trim().isEmpty()) {
                 try {
                     applyFunctionPrototype(function, program, spec.functionPrototype);
-                    result.message = "Function prototype updated";
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Function Prototype", spec.functionPrototype, true, null));
                     Msg.info(this, "Updated function prototype: " + spec.functionPrototype);
                 } catch (Exception e) {
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Function Prototype", spec.functionPrototype, false, e.getMessage()));
                     result.errors.add("Failed to update function prototype: " + e.getMessage());
                     Msg.error(this, "Prototype update failed", e);
                 }
-            }*/
+            }
             
             // 3. Apply member field type changes FIRST (before renames)
             // Changing undefined1 -> float creates a proper 4-byte component that can then be renamed

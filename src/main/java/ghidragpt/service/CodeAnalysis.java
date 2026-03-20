@@ -13,6 +13,7 @@ import ghidra.program.model.symbol.SymbolTable;
 import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 import ghidragpt.ui.Console;
+import ghidragpt.config.ConfigurationManager;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -31,7 +32,7 @@ public class CodeAnalysis {
         this.apiClient = apiClient;
         this.console = console;
         this.decompiler = new DecompInterface();
-        this.functionRewriteService = new FunctionRewrite(apiClient, console);
+        this.functionRewriteService = new FunctionRewrite(apiClient, console, new ConfigurationManager());
     }
     
     public void initializeDecompiler(Program program) {

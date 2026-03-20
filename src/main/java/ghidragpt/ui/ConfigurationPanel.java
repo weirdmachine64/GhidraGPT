@@ -26,6 +26,8 @@ public class ConfigurationPanel extends JPanel {
     private final JSpinner timeoutSpinner;
     private final JButton testButton;
     private final JLabel statusLabel;
+    private final JCheckBox applyFunctionRenameCheckbox;
+    private final JCheckBox applyFunctionPrototypeCheckbox;
     
     public ConfigurationPanel(APIClient apiClient) {
         this.apiClient = apiClient;
@@ -109,6 +111,31 @@ public class ConfigurationPanel extends JPanel {
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
         add(timeoutSpinner, gbc);
         
+        // Rewrite Options separator
+        gbc.gridx = 0; gbc.gridy = 7; gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(10, 5, 2, 5);
+        JSeparator separator = new JSeparator();
+        add(separator, gbc);
+        
+        gbc.gridx = 0; gbc.gridy = 8; gbc.gridwidth = 2;
+        gbc.insets = new Insets(2, 5, 5, 5);
+        add(new JLabel("Rewrite Options:"), gbc);
+        
+        // Apply Function Rename checkbox
+        applyFunctionRenameCheckbox = new JCheckBox("Apply function renames");
+        applyFunctionRenameCheckbox.setToolTipText("Allow AI to rename functions based on analysis");
+        gbc.gridx = 0; gbc.gridy = 9; gbc.gridwidth = 2;
+        gbc.insets = new Insets(2, 5, 2, 5);
+        add(applyFunctionRenameCheckbox, gbc);
+        
+        // Apply Function Prototype checkbox
+        applyFunctionPrototypeCheckbox = new JCheckBox("Apply function prototypes");
+        applyFunctionPrototypeCheckbox.setToolTipText("Allow AI to update function signatures (return type, parameters)");
+        gbc.gridx = 0; gbc.gridy = 10; gbc.gridwidth = 2;
+        gbc.insets = new Insets(2, 5, 5, 5);
+        add(applyFunctionPrototypeCheckbox, gbc);
+        
         // Create button panel to center buttons horizontally
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
         
@@ -123,7 +150,7 @@ public class ConfigurationPanel extends JPanel {
         buttonPanel.add(saveButton);
         
         // Add centered button panel
-        gbc.gridx = 0; gbc.gridy = 7; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 11; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.CENTER;
         gbc.insets = new Insets(10, 5, 5, 5);
@@ -133,7 +160,7 @@ public class ConfigurationPanel extends JPanel {
         // Status label
         statusLabel = new JLabel("Not configured");
         statusLabel.setForeground(Color.RED);
-        gbc.gridx = 0; gbc.gridy = 8; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 12; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.CENTER;
         gbc.insets = new Insets(5, 5, 10, 5);
@@ -143,7 +170,7 @@ public class ConfigurationPanel extends JPanel {
         // Vertical spacer to push everything to the top when panel height increases
         JPanel spacer = new JPanel();
         spacer.setOpaque(false);
-        gbc.gridx = 0; gbc.gridy = 9; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 13; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weighty = 1.0; // Take up all extra vertical space
         gbc.weightx = 1.0; // Take up all extra horizontal space
@@ -167,6 +194,8 @@ public class ConfigurationPanel extends JPanel {
         maxTokensSpinner.setValue(configManager.getMaxTokens());
         temperatureSpinner.setValue(configManager.getTemperature());
         timeoutSpinner.setValue(configManager.getTimeoutSeconds());
+        applyFunctionRenameCheckbox.setSelected(configManager.isApplyFunctionRename());
+        applyFunctionPrototypeCheckbox.setSelected(configManager.isApplyFunctionPrototype());
         
         // Update visibility of custom URL field
         APIClient.GPTProvider provider = configManager.getProvider();
@@ -272,6 +301,8 @@ public class ConfigurationPanel extends JPanel {
         configManager.setMaxTokens((Integer) maxTokensSpinner.getValue());
         configManager.setTemperature((Double) temperatureSpinner.getValue());
         configManager.setTimeoutSeconds((Integer) timeoutSpinner.getValue());
+        configManager.setApplyFunctionRename(applyFunctionRenameCheckbox.isSelected());
+        configManager.setApplyFunctionPrototype(applyFunctionPrototypeCheckbox.isSelected());
         configManager.saveConfiguration();
         
         // Apply to GPT service
