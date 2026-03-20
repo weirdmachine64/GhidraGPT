@@ -425,7 +425,7 @@ public class GhidraGPTProvider extends ComponentProvider {
         if (analysisService != null) {
             analysisService.dispose();
         }
-        analysisService = new CodeAnalysis(plugin.getGPTService(), console);
+        analysisService = new CodeAnalysis(plugin.getGPTService(), console, configPanel.getConfigurationManager());
         analysisService.initializeDecompiler(program);
     }
 

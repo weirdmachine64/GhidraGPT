@@ -28,11 +28,11 @@ public class CodeAnalysis {
     private final FunctionRewrite functionRewriteService;
     private final Console console;
     
-    public CodeAnalysis(APIClient apiClient, Console console) {
+    public CodeAnalysis(APIClient apiClient, Console console, ConfigurationManager configManager) {
         this.apiClient = apiClient;
         this.console = console;
         this.decompiler = new DecompInterface();
-        this.functionRewriteService = new FunctionRewrite(apiClient, console, new ConfigurationManager());
+        this.functionRewriteService = new FunctionRewrite(apiClient, console, configManager);
     }
     
     public void initializeDecompiler(Program program) {
