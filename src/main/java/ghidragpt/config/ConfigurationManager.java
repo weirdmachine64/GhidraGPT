@@ -25,6 +25,7 @@ public class ConfigurationManager {
     private static final String APPLY_FUNCTION_RENAME_PROPERTY = "rewrite.apply.function.rename";
     private static final String APPLY_FUNCTION_PROTOTYPE_PROPERTY = "rewrite.apply.function.prototype";
     private static final String CUSTOM_INSTRUCTIONS_PROPERTY = "rewrite.custom.instructions";
+    private static final String PRINT_REWRITE_SUMMARY_PROPERTY = "rewrite.print.summary";
     
     // XOR key for API key obfuscation, not super secure but still better than plaintext
     private static final String XOR_KEY = "GhidraGPT_Sec3@Key_9f4e7a2b#8c1d6f0a@2025!";
@@ -256,6 +257,17 @@ public class ConfigurationManager {
     
     public void setApplyFunctionPrototype(boolean apply) {
         properties.setProperty(APPLY_FUNCTION_PROTOTYPE_PROPERTY, String.valueOf(apply));
+    }
+    
+    /**
+     * Whether to print per-suggestion summary to console after rewrite
+     */
+    public boolean isPrintRewriteSummary() {
+        return Boolean.parseBoolean(properties.getProperty(PRINT_REWRITE_SUMMARY_PROPERTY, "true"));
+    }
+    
+    public void setPrintRewriteSummary(boolean print) {
+        properties.setProperty(PRINT_REWRITE_SUMMARY_PROPERTY, String.valueOf(print));
     }
     
     /**

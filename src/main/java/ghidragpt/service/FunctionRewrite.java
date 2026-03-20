@@ -869,7 +869,8 @@ public class FunctionRewrite {
         }
         
         // Print per-suggestion summary to console with color
-        if (console != null && !result.suggestionOutcomes.isEmpty()) {
+        if (console != null && !result.suggestionOutcomes.isEmpty()
+                && configManager != null && configManager.isPrintRewriteSummary()) {
             List<String[]> lines = new ArrayList<>();
             for (SuggestionOutcome outcome : result.suggestionOutcomes) {
                 if (!outcome.applied) continue;
