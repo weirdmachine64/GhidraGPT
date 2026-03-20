@@ -403,7 +403,7 @@ public class FunctionRewrite {
         prompt.append("  },\n");
         prompt.append("  \"function_prototype\": \"void function_name(type param1, type param2)\",\n");
         prompt.append("  \"comments\": {\n");
-        prompt.append("    \"address\": \"comment text\",\n");
+        prompt.append("    \"+0x10\": \"comment text (offset from function start)\",\n");
         prompt.append("    ...\n");
         prompt.append("  }\n");
         prompt.append("}\n\n");
@@ -424,15 +424,15 @@ public class FunctionRewrite {
         prompt.append("  },\n");
         prompt.append("  \"function_prototype\": \"NTSTATUS handle_security_failure(PVOID violationAddress, ULONG violationCode)\",\n");
         prompt.append("  \"comments\": {\n");
-        prompt.append("    \"0x1400010a0\": \"Check if violation address is valid\",\n");
-        prompt.append("    \"0x1400010c5\": \"Log security event before returning\"\n");
+        prompt.append("    \"+0x20\": \"Check if violation address is valid\",\n");
+        prompt.append("    \"+0x45\": \"Log security event before returning\"\n");
         prompt.append("  }\n");
         prompt.append("}\n\n");
         
         prompt.append("Notes:\n");
         prompt.append("- Keep well-named variables like 'ControlPc' and 'FunctionEntry' unless you have significantly better names.\n");
         prompt.append("- For struct/class member fields (mbr_*, field*_0x*), use m_ prefix with camelCase (e.g. mbr_0x18 -> m_rotationX, field13_0x38 -> m_defaultFieldOfView)\n");
-        prompt.append("- For addresses in comments, use hex format like '0x1400010a0'\n");
+        prompt.append("- For comments, use offsets from function start as hex (e.g. '+0x10', '+0x20')\n");
         prompt.append("- Only include fields that need changes - omit empty objects\n");
         prompt.append("- Function prototype should be a complete C function signature\n");
         
@@ -707,17 +707,9 @@ public class FunctionRewrite {
             int commentCount = 0;
             List<String> unplacedComments = new ArrayList<>();
             for (Map.Entry<String, String> comment : spec.comments.entrySet()) {
-                String addressStr = comment.getKey();
+                String offsetStr = comment.getKey();
                 String commentText = comment.getValue();
-
-                try {
-                    long rawAddr = Long.decode(addressStr);
-                    long adjusted = rawAddr - 0x400000; // TIW: gtr2 specific
-                    unplacedComments.add("[0x" + Long.toHexString(adjusted) + "] " + commentText);
-                } catch (NumberFormatException e) {
-                    // Key is not a numeric address (e.g. "case_1", "default_case")
-                    unplacedComments.add("[" + addressStr + "] " + commentText);
-                }
+                unplacedComments.add("[" + offsetStr + "] " + commentText);
             }
             
             // Write unplaced comments as a function plate comment so AI insights are not lost
