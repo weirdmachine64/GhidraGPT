@@ -373,6 +373,29 @@ public class FunctionRewrite {
     }
     
     /**
+     * Extract struct member field references from decompiled code.
+     * Finds auto-generated field names (field*, mbr_*) accessed via -> or . operators
+     * on any variable (this, local, parameter, etc.).
+     * Returns a map of field name -> example access expression.
+     */
+    private Map<String, String> extractMemberFieldReferences(String decompiledCode) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        
+        Pattern pattern = Pattern.compile("(\\w+)\\s*(?:->|\\.)((?:field|mbr_)\\w+)");
+        Matcher matcher = pattern.matcher(decompiledCode);
+        
+        while (matcher.find()) {
+            String accessor = matcher.group(1);
+            String fieldName = matcher.group(2);
+            if (!fields.containsKey(fieldName)) {
+                fields.put(fieldName, accessor + "->" + fieldName);
+            }
+        }
+        
+        return fields;
+    }
+    
+    /**
      * Generate address-annotated decompiled code.
      * Each statement line is prefixed with its instruction address from the decompiler token tree,
      * so the LLM can reference exact addresses for comment placement.
@@ -531,6 +554,18 @@ public class FunctionRewrite {
                   .append(globalsSection).append("\n");
         }
         
+        // Extract and add struct member field references from the decompiled code
+        Map<String, String> memberFields = extractMemberFieldReferences(decompiledCode);
+        if (!memberFields.isEmpty()) {
+            StringBuilder memberSection = new StringBuilder();
+            for (Map.Entry<String, String> entry : memberFields.entrySet()) {
+                memberSection.append("- ").append(entry.getKey())
+                    .append(" (accessed as ").append(entry.getValue()).append(")\n");
+            }
+            prompt.append("Struct Member Fields (need renaming via variable_renames):\n")
+                  .append(memberSection).append("\n");
+        }
+        
         prompt.append("Analysis Instructions:\n");
         prompt.append("1. Suggest a descriptive function name based on what the function does\n");
         prompt.append("2. Rename variables to reflect their purpose/usage\n");
@@ -543,7 +578,8 @@ public class FunctionRewrite {
         prompt.append("   - Loop counters, flags, temporary storage\n");
         prompt.append("   - Return values and error codes\n");
         prompt.append("   - Data size patterns (int vs long vs pointer)\n");
-        prompt.append("8. For global variables (DAT_*, cls_*), suggest descriptive names and types based on how they are used in this function\n\n");
+        prompt.append("8. For global variables (DAT_*, cls_*), suggest descriptive names and types based on how they are used in this function\n");
+        prompt.append("9. For struct member fields (field*_0x*, mbr_*) accessed via -> or . on any variable, suggest descriptive renames in variable_renames using the field name as the key\n\n");
         
         prompt.append("Answer strictly in this JSON format with no extra output:\n");
         prompt.append("{\n");
@@ -577,7 +613,9 @@ public class FunctionRewrite {
         prompt.append("  \"variable_renames\": {\n");
         prompt.append("    \"param_1\": \"violationAddress\",\n");
         prompt.append("    \"local_38\": \"imageBaseBuffer\",\n");
-        prompt.append("    \"uStack_20\": \"stackParameter\"\n");
+        prompt.append("    \"uStack_20\": \"stackParameter\",\n");
+        prompt.append("    \"field9_0x60\": \"m_fieldOfView\",\n");
+        prompt.append("    \"mbr_0x10\": \"m_rotationX\"\n");
         prompt.append("  },\n");
         prompt.append("  \"variable_types\": {\n");
         prompt.append("    \"violationAddress\": \"PVOID\",\n");
