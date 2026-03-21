@@ -562,7 +562,7 @@ public class FunctionRewrite {
         prompt.append("    ...\n");
         prompt.append("  },\n");
         prompt.append("  \"global_renames\": {\n");
-        prompt.append("    \"DAT_0054a938\": \"g_descriptiveName\",\n");
+        prompt.append("    \"DAT_0054a938\": \"descriptiveName\",\n");
         prompt.append("    ...\n");
         prompt.append("  },\n");
         prompt.append("  \"global_types\": {\n");
@@ -589,8 +589,8 @@ public class FunctionRewrite {
         prompt.append("    \"0x1400010c5\": \"Log security event before returning\"\n");
         prompt.append("  },\n");
         prompt.append("  \"global_renames\": {\n");
-        prompt.append("    \"DAT_0054a938\": \"g_defaultMouseX\",\n");
-        prompt.append("    \"DAT_0054a93c\": \"g_defaultMouseY\"\n");
+        prompt.append("    \"DAT_0054a938\": \"defaultMouseX\",\n");
+        prompt.append("    \"DAT_0054a93c\": \"defaultMouseY\"\n");
         prompt.append("  },\n");
         prompt.append("  \"global_types\": {\n");
         prompt.append("    \"DAT_0054a938\": \"float\",\n");
@@ -603,7 +603,6 @@ public class FunctionRewrite {
         prompt.append("- For comments, use the exact hex addresses shown in the /* addr */ annotations of the decompiled code\n");
         prompt.append("- Only include fields that need changes - omit empty objects\n");
         prompt.append("- Function prototype should be a complete C function signature\n");
-        prompt.append("- For globals, prefix suggested names with g_ to distinguish them from locals\n");
         
         return prompt.toString();
     }
