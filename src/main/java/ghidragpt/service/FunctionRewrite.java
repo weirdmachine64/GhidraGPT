@@ -31,6 +31,7 @@ import ghidra.app.util.parser.FunctionSignatureParser;
 import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.pcode.LocalSymbolMap;
+import ghidra.program.model.pcode.GlobalSymbolMap;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Variable;
@@ -122,8 +123,11 @@ public class FunctionRewrite {
             List<VariableAnalysis> variables = extractVariableAnalyses(function, highFunction);
             functionAnalysis.getVariables().addAll(variables);
             
+            // Extract global variable references from the decompiler
+            List<GlobalVarInfo> globalRefs = extractGlobalReferences(highFunction);
+            
             // Generate comprehensive rewrite prompt using PromptBuilder
-            String enhancementPrompt = generateComprehensiveRewritePrompt(function, annotatedCode != null ? annotatedCode : decompiledCode, functionAnalysis);
+            String enhancementPrompt = generateComprehensiveRewritePrompt(function, annotatedCode != null ? annotatedCode : decompiledCode, functionAnalysis, globalRefs);
             
             monitor.setMessage("Getting model suggestions for comprehensive function rewrite...");
             monitor.setProgress(30);
@@ -326,6 +330,47 @@ public class FunctionRewrite {
     }
     
     /**
+     * Extract global variables referenced by this function from the decompiler's global symbol map.
+     */
+    private List<GlobalVarInfo> extractGlobalReferences(HighFunction highFunction) {
+        List<GlobalVarInfo> globals = new ArrayList<>();
+        if (highFunction == null) {
+            return globals;
+        }
+
+        GlobalSymbolMap globalMap = highFunction.getGlobalSymbolMap();
+        if (globalMap == null) {
+            return globals;
+        }
+
+        Iterator<HighSymbol> symbols = globalMap.getSymbols();
+        while (symbols.hasNext()) {
+            HighSymbol symbol = symbols.next();
+            String name = symbol.getName();
+            if (name == null || name.isEmpty()) {
+                continue;
+            }
+
+            GlobalVarInfo info = new GlobalVarInfo();
+            info.name = name;
+            info.address = symbol.getStorage().getMinAddress();
+
+            HighVariable highVar = symbol.getHighVariable();
+            if (highVar != null && highVar.getDataType() != null) {
+                info.type = highVar.getDataType().getDisplayName();
+            } else if (symbol.getDataType() != null) {
+                info.type = symbol.getDataType().getDisplayName();
+            } else {
+                info.type = "unknown";
+            }
+
+            globals.add(info);
+        }
+
+        return globals;
+    }
+    
+    /**
      * Generate address-annotated decompiled code.
      * Each statement line is prefixed with its instruction address from the decompiler token tree,
      * so the LLM can reference exact addresses for comment placement.
@@ -407,7 +452,7 @@ public class FunctionRewrite {
     /**
      * Generate comprehensive rewrite prompt for model analysis
      */
-    private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
+    private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis, List<GlobalVarInfo> globalRefs) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible.\n");
         if (configManager != null) {
@@ -472,6 +517,18 @@ public class FunctionRewrite {
             prompt.append("Variables with unclear types (suggest better types):\n").append(undefinedTypes).append("\n");
         }
         
+        // Add global variables referenced by this function
+        if (globalRefs != null && !globalRefs.isEmpty()) {
+            StringBuilder globalsSection = new StringBuilder();
+            for (GlobalVarInfo global : globalRefs) {
+                globalsSection.append("- ").append(global.name)
+                    .append(" @ ").append(global.address)
+                    .append(" (").append(global.type).append(")\n");
+            }
+            prompt.append("Referenced Global Variables (DAT_*, cls_*, etc.):\n")
+                  .append(globalsSection).append("\n");
+        }
+        
         prompt.append("Analysis Instructions:\n");
         prompt.append("1. Suggest a descriptive function name based on what the function does\n");
         prompt.append("2. Rename variables to reflect their purpose/usage\n");
@@ -483,7 +540,8 @@ public class FunctionRewrite {
         prompt.append("   - Function parameters and their roles\n");
         prompt.append("   - Loop counters, flags, temporary storage\n");
         prompt.append("   - Return values and error codes\n");
-        prompt.append("   - Data size patterns (int vs long vs pointer)\n\n");
+        prompt.append("   - Data size patterns (int vs long vs pointer)\n");
+        prompt.append("8. For global variables (DAT_*, cls_*), suggest descriptive names and types based on how they are used in this function\n\n");
         
         prompt.append("Answer strictly in this JSON format with no extra output:\n");
         prompt.append("{\n");
@@ -499,6 +557,14 @@ public class FunctionRewrite {
         prompt.append("  \"function_prototype\": \"void function_name(type param1, type param2)\",\n");
         prompt.append("  \"comments\": {\n");
         prompt.append("    \"0x414f52\": \"comment text (use address from annotated code)\",\n");
+        prompt.append("    ...\n");
+        prompt.append("  },\n");
+        prompt.append("  \"global_renames\": {\n");
+        prompt.append("    \"DAT_0054a938\": \"g_descriptiveName\",\n");
+        prompt.append("    ...\n");
+        prompt.append("  },\n");
+        prompt.append("  \"global_types\": {\n");
+        prompt.append("    \"DAT_0054a938\": \"float\",\n");
         prompt.append("    ...\n");
         prompt.append("  }\n");
         prompt.append("}\n\n");
@@ -519,6 +585,14 @@ public class FunctionRewrite {
         prompt.append("  \"comments\": {\n");
         prompt.append("    \"0x1400010a0\": \"Check if violation address is valid\",\n");
         prompt.append("    \"0x1400010c5\": \"Log security event before returning\"\n");
+        prompt.append("  },\n");
+        prompt.append("  \"global_renames\": {\n");
+        prompt.append("    \"DAT_0054a938\": \"g_defaultMouseX\",\n");
+        prompt.append("    \"DAT_0054a93c\": \"g_defaultMouseY\"\n");
+        prompt.append("  },\n");
+        prompt.append("  \"global_types\": {\n");
+        prompt.append("    \"DAT_0054a938\": \"float\",\n");
+        prompt.append("    \"DAT_0054a93c\": \"float\"\n");
         prompt.append("  }\n");
         prompt.append("}\n\n");
         
@@ -527,6 +601,7 @@ public class FunctionRewrite {
         prompt.append("- For comments, use the exact hex addresses shown in the /* addr */ annotations of the decompiled code\n");
         prompt.append("- Only include fields that need changes - omit empty objects\n");
         prompt.append("- Function prototype should be a complete C function signature\n");
+        prompt.append("- For globals, prefix suggested names with g_ to distinguish them from locals\n");
         
         return prompt.toString();
     }
@@ -620,6 +695,16 @@ public class FunctionRewrite {
             // Extract comments object
             if (rootNode.has("comments")) {
                 spec.comments = parseJsonObject(rootNode.get("comments"));
+            }
+
+            // Extract global_renames object
+            if (rootNode.has("global_renames")) {
+                spec.globalRenames = parseJsonObject(rootNode.get("global_renames"));
+            }
+
+            // Extract global_types object
+            if (rootNode.has("global_types")) {
+                spec.globalTypes = parseJsonObject(rootNode.get("global_types"));
             }
 
         } catch (Exception e) {
@@ -825,6 +910,20 @@ public class FunctionRewrite {
                 Msg.info(this, "Added " + commentCount + " comment(s) as function plate comment");
             }
             
+            // 7. Record global rename/type suggestions (apply step coming in a future update)
+            for (Map.Entry<String, String> rename : spec.globalRenames.entrySet()) {
+                result.globalRenames.put(rename.getKey(), rename.getValue());
+                result.suggestionOutcomes.add(new SuggestionOutcome(
+                    "Global Rename", rename.getKey() + " \u2192 " + rename.getValue(),
+                    false, "Global renaming not yet implemented"));
+            }
+            for (Map.Entry<String, String> typeChange : spec.globalTypes.entrySet()) {
+                result.globalTypeUpdates.put(typeChange.getKey(), typeChange.getValue());
+                result.suggestionOutcomes.add(new SuggestionOutcome(
+                    "Global Type", typeChange.getKey() + " \u2192 " + typeChange.getValue(),
+                    false, "Global retyping not yet implemented"));
+            }
+            
             success = true;
             
             // Build result message
@@ -856,6 +955,15 @@ public class FunctionRewrite {
             
             if (spec.functionPrototype != null) {
                 message.append("Function prototype updated\n");
+            }
+            
+            if (!result.globalRenames.isEmpty()) {
+                message.append("Suggested ").append(result.globalRenames.size())
+                       .append(" global rename(s) (not yet applied)\n");
+            }
+            if (!result.globalTypeUpdates.isEmpty()) {
+                message.append("Suggested ").append(result.globalTypeUpdates.size())
+                       .append(" global type change(s) (not yet applied)\n");
             }
             
             if (!result.functionRenamed && renameCount == 0 && fieldRenameCount == 0 && typeCount == 0 && fieldTypeCount == 0 && commentCount == 0 && spec.functionPrototype == null) {
@@ -1593,6 +1701,15 @@ public class FunctionRewrite {
     }
     
     /**
+     * Holds global variable information referenced by a function
+     */
+    private static class GlobalVarInfo {
+        String name;
+        String type;
+        Address address;
+    }
+    
+    /**
      * Holds variable information
      */
     private static class VariableInfo {
@@ -1630,6 +1747,8 @@ public class FunctionRewrite {
         Map<String, String> variableTypes = new HashMap<>();
         String functionPrototype;
         Map<String, String> comments = new HashMap<>();
+        Map<String, String> globalRenames = new HashMap<>();
+        Map<String, String> globalTypes = new HashMap<>();
     }
     
     /**
@@ -1642,6 +1761,8 @@ public class FunctionRewrite {
         public boolean functionRenamed = false;
         public Map<String, String> variableRenames = new HashMap<>();
         public Map<String, String> typeUpdates = new HashMap<>();
+        public Map<String, String> globalRenames = new HashMap<>();
+        public Map<String, String> globalTypeUpdates = new HashMap<>();
         public List<String> errors = new ArrayList<>();
         public List<SuggestionOutcome> suggestionOutcomes = new ArrayList<>();
         public String message;
@@ -1667,6 +1788,22 @@ public class FunctionRewrite {
                 report.append("Type Improvements Suggested:\n");
                 for (Map.Entry<String, String> typeUpdate : typeUpdates.entrySet()) {
                     report.append("  ").append(typeUpdate.getKey()).append(" → ").append(typeUpdate.getValue()).append("\n");
+                }
+                report.append("\n");
+            }
+            
+            if (!globalRenames.isEmpty()) {
+                report.append("Global Rename Suggestions:\n");
+                for (Map.Entry<String, String> rename : globalRenames.entrySet()) {
+                    report.append("  ").append(rename.getKey()).append(" \u2192 ").append(rename.getValue()).append("\n");
+                }
+                report.append("\n");
+            }
+            
+            if (!globalTypeUpdates.isEmpty()) {
+                report.append("Global Type Suggestions:\n");
+                for (Map.Entry<String, String> typeUpdate : globalTypeUpdates.entrySet()) {
+                    report.append("  ").append(typeUpdate.getKey()).append(" \u2192 ").append(typeUpdate.getValue()).append("\n");
                 }
                 report.append("\n");
             }
