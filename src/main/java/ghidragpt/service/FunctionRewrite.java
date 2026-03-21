@@ -830,11 +830,16 @@ public class FunctionRewrite {
                 String varName = typeChange.getKey();
                 String newType = typeChange.getValue();
                 
-                if (applyMemberFieldTypeChange(function, program, varName, newType, spec.variableRenames)) {
+                String fieldTypeResult = applyMemberFieldTypeChange(function, program, varName, newType, spec.variableRenames);
+                if (fieldTypeResult == null) {
                     fieldTypeCount++;
                     result.typeUpdates.put(varName, newType);
                     result.suggestionOutcomes.add(new SuggestionOutcome("Field Type", varName + " \u2192 " + newType, true, null));
                     Msg.info(this, "Changed struct field type for " + varName + " to " + newType);
+                } else if (!fieldTypeResult.isEmpty()) {
+                    // Non-empty string = actual failure (empty = not a member field, handled by step 5)
+                    result.typeUpdates.put(varName, newType); // mark as handled so step 5 skips it
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Field Type", varName + " \u2192 " + newType, false, fieldTypeResult));
                 }
             }
             
@@ -875,13 +880,14 @@ public class FunctionRewrite {
                     continue;
                 }
                 
-                if (applyVariableTypeChange(function, program, varName, newType)) {
+                String typeResult = applyVariableTypeChange(function, program, varName, newType);
+                if (typeResult == null) {
                     typeCount++;
                     result.typeUpdates.put(varName, newType);
                     result.suggestionOutcomes.add(new SuggestionOutcome("Type Change", varName + " \u2192 " + newType, true, null));
                     Msg.info(this, "Changed type for " + varName + " to " + newType);
                 } else {
-                    result.suggestionOutcomes.add(new SuggestionOutcome("Type Change", varName + " \u2192 " + newType, false, "Variable not found or type could not be resolved"));
+                    result.suggestionOutcomes.add(new SuggestionOutcome("Type Change", varName + " \u2192 " + newType, false, typeResult));
                     result.errors.add("Failed to change type for variable: " + varName);
                 }
             }
@@ -924,7 +930,8 @@ public class FunctionRewrite {
                         break;
                     }
                 }
-                if (applyGlobalTypeChange(program, resolvedName, newType)) {
+                String globalTypeResult = applyGlobalTypeChange(program, resolvedName, newType);
+                if (globalTypeResult == null) {
                     globalTypeCount++;
                     result.globalTypeUpdates.put(globalName, newType);
                     result.suggestionOutcomes.add(new SuggestionOutcome(
@@ -932,7 +939,7 @@ public class FunctionRewrite {
                     Msg.info(this, "Changed global type: " + globalName + " -> " + newType);
                 } else {
                     result.suggestionOutcomes.add(new SuggestionOutcome(
-                        "Global Type", globalName + " \u2192 " + newType, false, "Could not resolve global or type"));
+                        "Global Type", globalName + " \u2192 " + newType, false, globalTypeResult));
                 }
             }
             
@@ -1262,7 +1269,7 @@ public class FunctionRewrite {
      * Searches by field name across nested structs, with offset-based fallback.
      * Only changes the type if the current type is undefined.
      */
-    private boolean applyMemberFieldTypeChange(Function function, Program program, 
+    private String applyMemberFieldTypeChange(Function function, Program program, 
             String varName, String newType, Map<String, String> variableRenames) {
         try {
             // The varName in variable_types uses the NEW name (post-rename).
@@ -1281,13 +1288,13 @@ public class FunctionRewrite {
             
             // Must be a member field name (original) or m_ prefixed (already renamed)
             if (!isMemberFieldName(originalFieldName) && !varName.startsWith("m_")) {
-                return false;
+                return "";
             }
             
             // Find pointer-to-struct from parameters
             Parameter[] params = function.getParameters();
             if (params.length == 0) {
-                return false;
+                return "";
             }
             
             Structure topStruct = null;
@@ -1303,7 +1310,7 @@ public class FunctionRewrite {
             }
             
             if (topStruct == null) {
-                return false;
+                return "";
             }
             
             // Strategy 1: Find by original field name across struct hierarchy
@@ -1323,7 +1330,7 @@ public class FunctionRewrite {
             }
             
             if (component == null) {
-                return false;
+                return "";
             }
             
             // Only change type if current type is undefined
@@ -1331,7 +1338,7 @@ public class FunctionRewrite {
             if (!currentTypeName.contains("undefined")) {
                 Msg.info(this, "Skipping type change for " + varName + 
                     " - current type '" + component.getDataType().getName() + "' is not undefined");
-                return false;
+                return "Already typed as '" + component.getDataType().getName() + "'";
             }
             
             // Resolve the new data type
@@ -1339,7 +1346,7 @@ public class FunctionRewrite {
             DataType dataType = resolveDataType(dtm, newType);
             if (dataType == null) {
                 Msg.warn(this, "Could not resolve data type: " + newType);
-                return false;
+                return "Could not resolve type: " + newType;
             }
             
             // Replace the component with the new type
@@ -1352,11 +1359,11 @@ public class FunctionRewrite {
             ownerStruct.replaceAtOffset(fieldOffset, dataType, dataType.getLength(), 
                 component.getFieldName(), component.getComment());
             Msg.info(this, "Changed struct field type: " + currentTypeName + " -> " + newType + " for " + varName);
-            return true;
+            return null;
             
         } catch (Exception e) {
             Msg.error(this, "Error changing type for member field " + varName, e);
-            return false;
+            return "Error: " + e.getMessage();
         }
     }
     
@@ -1382,23 +1389,23 @@ public class FunctionRewrite {
     /**
      * Apply variable type change using HighFunctionDBUtil
      */
-    private boolean applyVariableTypeChange(Function function, Program program, String varName, String newType) {
+    private String applyVariableTypeChange(Function function, Program program, String varName, String newType) {
         try {
             // Decompile to get HighFunction
             DecompileResults results = decompiler.decompileFunction(function, 30, new ConsoleTaskMonitor());
             if (results == null || !results.decompileCompleted()) {
-                return false;
+                return "Decompile failed";
             }
             
             HighFunction highFunction = results.getHighFunction();
             if (highFunction == null) {
-                return false;
+                return "Decompile failed";
             }
             
             // Find the symbol
             HighSymbol symbol = findSymbolByName(highFunction, varName);
             if (symbol == null) {
-                return false;
+                return "Variable not found";
             }
             
             // Only retype if current type is undefined or void*
@@ -1408,7 +1415,7 @@ public class FunctionRewrite {
                 if (!currentName.contains("undefined") && !currentName.equals("pointer")) {
                     Msg.info(this, "Skipping type change for " + varName +
                         " - current type '" + currentType.getName() + "' is not undefined/void*");
-                    return false;
+                    return "Already typed as '" + currentType.getName() + "'";
                 }
             }
             
@@ -1417,21 +1424,21 @@ public class FunctionRewrite {
             DataType dataType = resolveDataType(dtm, newType);
             if (dataType == null) {
                 Msg.warn(this, "Could not resolve data type: " + newType);
-                return false;
+                return "Could not resolve type: " + newType;
             }
             
             // Apply the type change
             int tx = program.startTransaction("Change variable type: " + varName + " -> " + newType);
             try {
                 HighFunctionDBUtil.updateDBVariable(symbol, symbol.getName(), dataType, SourceType.USER_DEFINED);
-                return true;
+                return null;
             } finally {
                 program.endTransaction(tx, true);
             }
             
         } catch (Exception e) {
             Msg.error(this, "Error changing type for variable " + varName, e);
-            return false;
+            return "Error: " + e.getMessage();
         }
     }
     
@@ -1548,7 +1555,7 @@ public class FunctionRewrite {
      * Apply a global variable type change.
      * Finds the data at the symbol's address and re-creates it with the new type.
      */
-    private boolean applyGlobalTypeChange(Program program, String globalName, String newTypeName) {
+    private String applyGlobalTypeChange(Program program, String globalName, String newTypeName) {
         try {
             SymbolTable symbolTable = program.getSymbolTable();
             Address addr = null;
@@ -1571,7 +1578,19 @@ public class FunctionRewrite {
             
             if (addr == null) {
                 Msg.warn(this, "Global symbol address not found for type change: " + globalName);
-                return false;
+                return "Global symbol not found";
+            }
+            
+            // Check current type - skip if already typed (not undefined)
+            Listing listing = program.getListing();
+            Data existingData = listing.getDataAt(addr);
+            if (existingData != null) {
+                String currentName = existingData.getDataType().getName().toLowerCase();
+                if (!currentName.contains("undefined")) {
+                    Msg.info(this, "Skipping global type change for " + globalName +
+                        " - current type '" + existingData.getDataType().getName() + "' is not undefined");
+                    return "Already typed as '" + existingData.getDataType().getName() + "'";
+                }
             }
             
             // Resolve the target data type
@@ -1579,19 +1598,18 @@ public class FunctionRewrite {
             DataType dataType = resolveDataType(dtm, newTypeName);
             if (dataType == null) {
                 Msg.warn(this, "Could not resolve data type: " + newTypeName);
-                return false;
+                return "Could not resolve type: " + newTypeName;
             }
             
             // Apply the type at the address
-            Listing listing = program.getListing();
             listing.clearCodeUnits(addr, addr.add(dataType.getLength() - 1), false);
             listing.createData(addr, dataType);
             Msg.info(this, "Applied global type " + newTypeName + " at " + addr);
-            return true;
+            return null;
             
         } catch (Exception e) {
             Msg.error(this, "Error changing type for global " + globalName + ": " + e.getMessage());
-            return false;
+            return "Error: " + e.getMessage();
         }
     }
     
