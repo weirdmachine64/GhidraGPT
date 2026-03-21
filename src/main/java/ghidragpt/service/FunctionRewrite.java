@@ -1401,6 +1401,17 @@ public class FunctionRewrite {
                 return false;
             }
             
+            // Only retype if current type is undefined or void*
+            DataType currentType = symbol.getDataType();
+            if (currentType != null) {
+                String currentName = currentType.getName().toLowerCase();
+                if (!currentName.contains("undefined") && !currentName.equals("pointer")) {
+                    Msg.info(this, "Skipping type change for " + varName +
+                        " - current type '" + currentType.getName() + "' is not undefined/void*");
+                    return false;
+                }
+            }
+            
             // Resolve the data type
             DataTypeManager dtm = program.getDataTypeManager();
             DataType dataType = resolveDataType(dtm, newType);
