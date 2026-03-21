@@ -938,6 +938,11 @@ public class FunctionRewrite {
                 if (oldName.equals(newName)) {
                     continue;
                 }
+                if (!isDefaultGlobalName(oldName)) {
+                    result.suggestionOutcomes.add(new SuggestionOutcome(
+                        "Global Rename", oldName + " \u2192 " + newName, false, "Already user-renamed"));
+                    continue;
+                }
                 if (applyGlobalRename(program, oldName, newName)) {
                     globalRenameCount++;
                     result.globalRenames.put(oldName, newName);
@@ -1467,10 +1472,15 @@ public class FunctionRewrite {
 
     /**
      * Apply a global variable rename using the program's SymbolTable.
-     * Finds the symbol by its current name (DAT_XXXXXXXX pattern) and renames it.
+     * Only renames globals that still have default auto-generated names.
      */
     private boolean applyGlobalRename(Program program, String oldName, String newName) {
         try {
+            if (!isDefaultGlobalName(oldName)) {
+                Msg.info(this, "Skipping global rename: " + oldName + " is not a default name (already user-renamed)");
+                return false;
+            }
+            
             SymbolTable symbolTable = program.getSymbolTable();
             
             // Try to find by name in the global namespace
@@ -1502,6 +1512,18 @@ public class FunctionRewrite {
             Msg.error(this, "Error renaming global " + oldName + ": " + e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Check if a global symbol name is a default auto-generated name.
+     * Ghidra generates names like DAT_, FUN_, cls_, LAB_, s_, PTR_, EXT_, etc.
+     */
+    private boolean isDefaultGlobalName(String name) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        return name.matches("^(DAT|FUN|cls|LAB|PTR|EXT|s|switchD|caseD|GUID|thunk_FUN|AddrTable)_[0-9a-fA-Fx]+$")
+            || name.matches("^(meth|vftable|Class)_0x[0-9a-fA-F]+$");
     }
     
     /**
