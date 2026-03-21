@@ -36,6 +36,8 @@ import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Variable;
 import ghidra.program.model.listing.VariableStorage;
+import ghidra.program.model.listing.Data;
+import ghidra.program.model.listing.Listing;
 import ghidragpt.ui.Console;
 import ghidragpt.service.APIClient;
 import ghidragpt.utils.PromptBuilder;
@@ -910,18 +912,42 @@ public class FunctionRewrite {
                 Msg.info(this, "Added " + commentCount + " comment(s) as function plate comment");
             }
             
-            // 7. Record global rename/type suggestions (apply step coming in a future update)
-            for (Map.Entry<String, String> rename : spec.globalRenames.entrySet()) {
-                result.globalRenames.put(rename.getKey(), rename.getValue());
-                result.suggestionOutcomes.add(new SuggestionOutcome(
-                    "Global Rename", rename.getKey() + " \u2192 " + rename.getValue(),
-                    false, "Global renaming not yet implemented"));
-            }
+            // 7. Apply global variable type changes FIRST (before renames, so we resolve by old name)
+            int globalTypeCount = 0;
             for (Map.Entry<String, String> typeChange : spec.globalTypes.entrySet()) {
-                result.globalTypeUpdates.put(typeChange.getKey(), typeChange.getValue());
-                result.suggestionOutcomes.add(new SuggestionOutcome(
-                    "Global Type", typeChange.getKey() + " \u2192 " + typeChange.getValue(),
-                    false, "Global retyping not yet implemented"));
+                String globalName = typeChange.getKey();
+                String newType = typeChange.getValue();
+                if (applyGlobalTypeChange(program, globalName, newType)) {
+                    globalTypeCount++;
+                    result.globalTypeUpdates.put(globalName, newType);
+                    result.suggestionOutcomes.add(new SuggestionOutcome(
+                        "Global Type", globalName + " \u2192 " + newType, true, null));
+                    Msg.info(this, "Changed global type: " + globalName + " -> " + newType);
+                } else {
+                    result.suggestionOutcomes.add(new SuggestionOutcome(
+                        "Global Type", globalName + " \u2192 " + newType, false, "Could not resolve global or type"));
+                }
+            }
+            
+            // 8. Apply global variable renames
+            int globalRenameCount = 0;
+            for (Map.Entry<String, String> rename : spec.globalRenames.entrySet()) {
+                String oldName = rename.getKey();
+                String newName = rename.getValue();
+                // Skip identity renames
+                if (oldName.equals(newName)) {
+                    continue;
+                }
+                if (applyGlobalRename(program, oldName, newName)) {
+                    globalRenameCount++;
+                    result.globalRenames.put(oldName, newName);
+                    result.suggestionOutcomes.add(new SuggestionOutcome(
+                        "Global Rename", oldName + " \u2192 " + newName, true, null));
+                    Msg.info(this, "Renamed global: " + oldName + " -> " + newName);
+                } else {
+                    result.suggestionOutcomes.add(new SuggestionOutcome(
+                        "Global Rename", oldName + " \u2192 " + newName, false, "Symbol not found in program"));
+                }
             }
             
             success = true;
@@ -957,16 +983,15 @@ public class FunctionRewrite {
                 message.append("Function prototype updated\n");
             }
             
-            if (!result.globalRenames.isEmpty()) {
-                message.append("Suggested ").append(result.globalRenames.size())
-                       .append(" global rename(s) (not yet applied)\n");
-            }
-            if (!result.globalTypeUpdates.isEmpty()) {
-                message.append("Suggested ").append(result.globalTypeUpdates.size())
-                       .append(" global type change(s) (not yet applied)\n");
+            if (globalRenameCount > 0) {
+                message.append("Successfully renamed ").append(globalRenameCount).append(" global(s)\n");
             }
             
-            if (!result.functionRenamed && renameCount == 0 && fieldRenameCount == 0 && typeCount == 0 && fieldTypeCount == 0 && commentCount == 0 && spec.functionPrototype == null) {
+            if (globalTypeCount > 0) {
+                message.append("Successfully updated types for ").append(globalTypeCount).append(" global(s)\n");
+            }
+            
+            if (!result.functionRenamed && renameCount == 0 && fieldRenameCount == 0 && typeCount == 0 && fieldTypeCount == 0 && commentCount == 0 && globalRenameCount == 0 && globalTypeCount == 0 && spec.functionPrototype == null) {
                 message.append("No changes were applied");
             }
             
@@ -1440,6 +1465,96 @@ public class FunctionRewrite {
         }
     }
 
+    /**
+     * Apply a global variable rename using the program's SymbolTable.
+     * Finds the symbol by its current name (DAT_XXXXXXXX pattern) and renames it.
+     */
+    private boolean applyGlobalRename(Program program, String oldName, String newName) {
+        try {
+            SymbolTable symbolTable = program.getSymbolTable();
+            
+            // Try to find by name in the global namespace
+            Iterator<Symbol> symbols = symbolTable.getSymbols(oldName);
+            while (symbols.hasNext()) {
+                Symbol symbol = symbols.next();
+                if (symbol.isGlobal()) {
+                    symbol.setName(newName, SourceType.USER_DEFINED);
+                    return true;
+                }
+            }
+            
+            // Fallback: try to parse address from DAT_ pattern and find symbol at that address
+            if (oldName.startsWith("DAT_")) {
+                String addrStr = oldName.substring(4); // strip "DAT_"
+                Address addr = program.getAddressFactory().getAddress(addrStr);
+                if (addr != null) {
+                    Symbol symbol = symbolTable.getPrimarySymbol(addr);
+                    if (symbol != null) {
+                        symbol.setName(newName, SourceType.USER_DEFINED);
+                        return true;
+                    }
+                }
+            }
+            
+            Msg.warn(this, "Global symbol not found for rename: " + oldName);
+            return false;
+        } catch (DuplicateNameException | InvalidInputException e) {
+            Msg.error(this, "Error renaming global " + oldName + ": " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Apply a global variable type change.
+     * Finds the data at the symbol's address and re-creates it with the new type.
+     */
+    private boolean applyGlobalTypeChange(Program program, String globalName, String newTypeName) {
+        try {
+            SymbolTable symbolTable = program.getSymbolTable();
+            Address addr = null;
+            
+            // Find the address of this global
+            Iterator<Symbol> symbols = symbolTable.getSymbols(globalName);
+            while (symbols.hasNext()) {
+                Symbol symbol = symbols.next();
+                if (symbol.isGlobal()) {
+                    addr = symbol.getAddress();
+                    break;
+                }
+            }
+            
+            // Fallback: parse address from DAT_ pattern
+            if (addr == null && globalName.startsWith("DAT_")) {
+                String addrStr = globalName.substring(4);
+                addr = program.getAddressFactory().getAddress(addrStr);
+            }
+            
+            if (addr == null) {
+                Msg.warn(this, "Global symbol address not found for type change: " + globalName);
+                return false;
+            }
+            
+            // Resolve the target data type
+            DataTypeManager dtm = program.getDataTypeManager();
+            DataType dataType = resolveDataType(dtm, newTypeName);
+            if (dataType == null) {
+                Msg.warn(this, "Could not resolve data type: " + newTypeName);
+                return false;
+            }
+            
+            // Apply the type at the address
+            Listing listing = program.getListing();
+            listing.clearCodeUnits(addr, addr.add(dataType.getLength() - 1), false);
+            listing.createData(addr, dataType);
+            Msg.info(this, "Applied global type " + newTypeName + " at " + addr);
+            return true;
+            
+        } catch (Exception e) {
+            Msg.error(this, "Error changing type for global " + globalName + ": " + e.getMessage());
+            return false;
+        }
+    }
+    
     /**
      * Find a symbol by name in the high function
      */
