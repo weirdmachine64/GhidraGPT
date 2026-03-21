@@ -916,7 +916,15 @@ public class FunctionRewrite {
             for (Map.Entry<String, String> typeChange : spec.globalTypes.entrySet()) {
                 String globalName = typeChange.getKey();
                 String newType = typeChange.getValue();
-                if (applyGlobalTypeChange(program, globalName, newType)) {
+                // LLM may use the NEW name as key (post-rename). Reverse-lookup the old name.
+                String resolvedName = globalName;
+                for (Map.Entry<String, String> rename : spec.globalRenames.entrySet()) {
+                    if (rename.getValue().equals(globalName)) {
+                        resolvedName = rename.getKey();
+                        break;
+                    }
+                }
+                if (applyGlobalTypeChange(program, resolvedName, newType)) {
                     globalTypeCount++;
                     result.globalTypeUpdates.put(globalName, newType);
                     result.suggestionOutcomes.add(new SuggestionOutcome(
