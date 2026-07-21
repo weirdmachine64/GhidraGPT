@@ -20,7 +20,7 @@ import javax.swing.*;
 //@formatter:off
 @PluginInfo(
     status = PluginStatus.RELEASED,
-    packageName = "GhidraGPT",
+    packageName = GhidraGPTPluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "GPT Integration for Ghidra",
     description = "Integrates GPT models (OpenAI GPT, Anthropic Claude, etc.) into Ghidra for " +
