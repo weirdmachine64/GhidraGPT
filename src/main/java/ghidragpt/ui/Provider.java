@@ -99,7 +99,7 @@ public class Provider extends ComponentProvider {
     }
 
     private void createEnhanceFunctionAction() {
-        DockingAction enhanceAction = new DockingAction("Rewrite Function", getName()) {
+        DockingAction enhanceAction = new DockingAction("Rewrite", getName()) {
             @Override
             public void actionPerformed(ActionContext context) {
                 enhanceFunctionFromContext(context);
@@ -111,14 +111,14 @@ public class Provider extends ComponentProvider {
             }
         };
 
-        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite Function" }, null, "a"));
-        enhanceAction.setDescription("Comprehensively rewrite function and variable names for maximum readability");
+        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite" }, null, "b"));
+        enhanceAction.setDescription("Recover symbol names, variable types, the prototype, and comments for the selected function");
 
         plugin.getTool().addAction(enhanceAction);
     }
 
     private void createVulnerabilityAction() {
-        DockingAction vulnAction = new DockingAction("Analyze Code", getName()) {
+        DockingAction vulnAction = new DockingAction("Audit", getName()) {
             @Override
             public void actionPerformed(ActionContext context) {
                 detectVulnerabilitiesFromContext(context);
@@ -130,14 +130,14 @@ public class Provider extends ComponentProvider {
             }
         };
 
-        vulnAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Analyze Code" }, null, "c"));
-        vulnAction.setDescription("Scan function for potential security vulnerabilities");
+        vulnAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Audit" }, null, "c"));
+        vulnAction.setDescription("Review the selected function's decompiled code for likely security issues (single-function, not whole-program)");
 
         plugin.getTool().addAction(vulnAction);
     }
 
     private void createExplainAction() {
-        DockingAction explainAction = new DockingAction("Explain Code", getName()) {
+        DockingAction explainAction = new DockingAction("Explain", getName()) {
             @Override
             public void actionPerformed(ActionContext context) {
                 explainFunctionFromContext(context);
@@ -149,8 +149,8 @@ public class Provider extends ComponentProvider {
             }
         };
 
-        explainAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Explain Code" }, null, "b"));
-        explainAction.setDescription("Get detailed explanation of function behavior");
+        explainAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Explain" }, null, "a"));
+        explainAction.setDescription("Explain the behavior of the selected function");
 
         plugin.getTool().addAction(explainAction);
     }
@@ -295,7 +295,7 @@ public class Provider extends ComponentProvider {
     }
 
     private void detectVulnerabilities() {
-        executeAnalysis("Detecting vulnerabilities...",
+        executeAnalysis("Auditing function...",
                 (function, monitor) -> analysisService.detectVulnerabilities(function, currentProgram, monitor));
     }
 
@@ -316,7 +316,7 @@ public class Provider extends ComponentProvider {
     private void detectVulnerabilitiesFromContext(ActionContext context) {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
-        executeAnalysisWithContext("Detecting vulnerabilities...", function, program,
+        executeAnalysisWithContext("Auditing function...", function, program,
                 (f, p, monitor) -> analysisService.detectVulnerabilities(f, p, monitor));
     }
 
