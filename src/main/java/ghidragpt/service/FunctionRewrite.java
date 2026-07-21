@@ -33,6 +33,7 @@ import ghidragpt.ui.Console;
 import ghidragpt.service.APIClient;
 import ghidragpt.utils.PromptBuilder;
 import ghidragpt.utils.ResponseParser;
+import ghidragpt.utils.RewriteEditParser;
 import ghidragpt.utils.GhidraFunctionModifier;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.Msg;
@@ -388,49 +389,30 @@ public class FunctionRewrite {
         prompt.append("   - Return values and error codes\n");
         prompt.append("   - Data size patterns (int vs long vs pointer)\n\n");
         
-        prompt.append("Answer strictly in this JSON format with no extra output:\n");
-        prompt.append("{\n");
-        prompt.append("  \"function_name\": \"descriptive_function_name\",\n");
-        prompt.append("  \"variable_renames\": {\n");
-        prompt.append("    \"old_variable\": \"new_variable\",\n");
-        prompt.append("    ...\n");
-        prompt.append("  },\n");
-        prompt.append("  \"variable_types\": {\n");
-        prompt.append("    \"variable_name\": \"suggested_type\",\n");
-        prompt.append("    ...\n");
-        prompt.append("  },\n");
-        prompt.append("  \"function_prototype\": \"void function_name(type param1, type param2)\",\n");
-        prompt.append("  \"comments\": {\n");
-        prompt.append("    \"address\": \"comment text\",\n");
-        prompt.append("    ...\n");
-        prompt.append("  }\n");
-        prompt.append("}\n\n");
-        
-        prompt.append("Examples:\n");
-        prompt.append("{\n");
-        prompt.append("  \"function_name\": \"handle_security_failure\",\n");
-        prompt.append("  \"variable_renames\": {\n");
-        prompt.append("    \"param_1\": \"violation_address\",\n");
-        prompt.append("    \"local_38\": \"image_base_buffer\",\n");
-        prompt.append("    \"uStack_20\": \"stack_parameter\"\n");
-        prompt.append("  },\n");
-        prompt.append("  \"variable_types\": {\n");
-        prompt.append("    \"violation_address\": \"PVOID\",\n");
-        prompt.append("    \"image_base_buffer\": \"DWORD64*\"\n");
-        prompt.append("  },\n");
-        prompt.append("  \"function_prototype\": \"NTSTATUS handle_security_failure(PVOID violation_address, ULONG violation_code)\",\n");
-        prompt.append("  \"comments\": {\n");
-        prompt.append("    \"0x1400010a0\": \"Check if violation address is valid\",\n");
-        prompt.append("    \"0x1400010c5\": \"Log security event before returning\"\n");
-        prompt.append("  }\n");
-        prompt.append("}\n\n");
-        
+        prompt.append("Output format: JSON Lines. Emit ONE JSON object per line, each a single edit.\n");
+        prompt.append("No surrounding array, no markdown fences, no prose before or after. One object per line.\n");
+        prompt.append("Supported edits (\"op\"):\n");
+        prompt.append("  {\"op\":\"func_name\",\"name\":\"descriptive_function_name\"}\n");
+        prompt.append("  {\"op\":\"rename\",\"old\":\"old_variable\",\"new\":\"new_variable\"}\n");
+        prompt.append("  {\"op\":\"retype\",\"name\":\"variable_name\",\"type\":\"suggested_type\"}\n");
+        prompt.append("  {\"op\":\"prototype\",\"signature\":\"ret_type function_name(type param1, type param2)\"}\n");
+        prompt.append("  {\"op\":\"comment\",\"address\":\"0x...\",\"text\":\"comment text\"}\n\n");
+
+        prompt.append("Example output:\n");
+        prompt.append("{\"op\":\"func_name\",\"name\":\"handle_security_failure\"}\n");
+        prompt.append("{\"op\":\"rename\",\"old\":\"param_1\",\"new\":\"violation_address\"}\n");
+        prompt.append("{\"op\":\"rename\",\"old\":\"local_38\",\"new\":\"image_base_buffer\"}\n");
+        prompt.append("{\"op\":\"retype\",\"name\":\"violation_address\",\"type\":\"PVOID\"}\n");
+        prompt.append("{\"op\":\"prototype\",\"signature\":\"NTSTATUS handle_security_failure(PVOID violation_address, ULONG violation_code)\"}\n");
+        prompt.append("{\"op\":\"comment\",\"address\":\"0x1400010a0\",\"text\":\"Check if violation address is valid\"}\n\n");
+
         prompt.append("Notes:\n");
+        prompt.append("- Emit only the edits that are needed; skip anything already well-named or correct.\n");
         prompt.append("- Keep well-named variables like 'ControlPc' and 'FunctionEntry' unless you have significantly better names.\n");
-        prompt.append("- For addresses in comments, use hex format like '0x1400010a0'\n");
-        prompt.append("- Only include fields that need changes - omit empty objects\n");
-        prompt.append("- Function prototype should be a complete C function signature\n");
-        
+        prompt.append("- For comment addresses, use hex format like '0x1400010a0'.\n");
+        prompt.append("- The prototype signature must be a complete, parseable C function signature.\n");
+        prompt.append("- Each line must be valid standalone JSON so a partial response still applies the completed edits.\n");
+
         return prompt.toString();
     }
     
@@ -457,37 +439,17 @@ public class FunctionRewrite {
      * Parses comprehensive rewrite response from model (JSON format)
      */
     private ComprehensiveRewriteSpec parseComprehensiveRewriteResponse(String response) {
+        // Parse the JSON Lines edit stream (falls back to the legacy single-object
+        // format internally). Parsing per-line keeps a truncated response usable:
+        // every complete edit is applied, only a partial final line is lost.
+        RewriteEditParser.RewriteEdits edits = RewriteEditParser.parse(response);
+
         ComprehensiveRewriteSpec spec = new ComprehensiveRewriteSpec();
-        
-        try {
-            // Extract JSON from response (model might add extra text)
-            int jsonStart = response.indexOf("{");
-            int jsonEnd = response.lastIndexOf("}") + 1;
-            
-            if (jsonStart == -1 || jsonEnd == -1) {
-                // Fallback to old parsing if no JSON found
-                Msg.warn(this, "No JSON found in response, falling back to text parsing");
-                EnhancementSuggestions fallback = parseEnhancementResponse(response);
-                spec.functionName = fallback.functionName;
-                spec.variableRenames = fallback.variableRenames;
-                spec.variableTypes = fallback.typeHints;
-                return spec;
-            }
-            
-            String jsonStr = response.substring(jsonStart, jsonEnd);
-            
-            // Simple JSON parsing (since we don't have a full JSON library)
-            spec = parseSimpleJson(jsonStr);
-            
-        } catch (Exception e) {
-            Msg.error(this, "Failed to parse comprehensive rewrite response: " + e.getMessage());
-            // Fallback to old parsing
-            EnhancementSuggestions fallback = parseEnhancementResponse(response);
-            spec.functionName = fallback.functionName;
-            spec.variableRenames = fallback.variableRenames;
-            spec.variableTypes = fallback.typeHints;
-        }
-        
+        spec.functionName = edits.functionName;
+        spec.functionPrototype = edits.functionPrototype;
+        spec.variableRenames = edits.variableRenames;
+        spec.variableTypes = edits.variableTypes;
+        spec.comments = edits.comments;
         return spec;
     }
     
@@ -909,8 +871,11 @@ public class FunctionRewrite {
         // Handle common built-in types
         switch (typeName.toLowerCase()) {
             case "int":
-            case "long":
                 return dtm.getDataType("/int");
+            case "long":
+                // "long" is not "int": on LP64 it is 8 bytes. Use Ghidra's own
+                // arch-sized long rather than collapsing it to a 4-byte int.
+                return dtm.getDataType("/long");
             case "uint":
             case "unsigned int":
             case "unsigned long":
@@ -944,7 +909,9 @@ public class FunctionRewrite {
                 if (directType != null) {
                     return directType;
                 }
-                return dtm.getDataType("/int"); // fallback
+                // Unresolved: return null so the caller skips this retype instead
+                // of silently coercing the variable to int (which corrupts it).
+                return null;
         }
     }
     
