@@ -24,15 +24,4 @@
             <outputDirectory></outputDirectory>
         </file>
     </files>
-
-    <!-- Include data directory -->
-    <fileSets>
-        <fileSet>
-            <directory>data</directory>
-            <outputDirectory>data</outputDirectory>
-            <includes>
-                <include>**/*</include>
-            </includes>
-        </fileSet>
-    </fileSets>
 </assembly>
