@@ -56,7 +56,7 @@ public class GhidraGPTService {
             
             monitor.setMessage("Rewriting function for readability...");
 
-            FunctionRewrite.EnhancementResult result = 
+            FunctionRewrite.RewriteResult result =
                 functionRewriteService.rewriteFunction(function, program, monitor);
             
             return result.getReport();

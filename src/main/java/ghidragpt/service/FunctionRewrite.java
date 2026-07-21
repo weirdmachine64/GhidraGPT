@@ -75,8 +75,8 @@ public class FunctionRewrite {
     /**
      * Comprehensive function rewrite: renames function, variables, sets types, and adds comments
      */
-    public EnhancementResult rewriteFunction(Function function, Program program, TaskMonitor monitor) {
-        EnhancementResult result = new EnhancementResult();
+    public RewriteResult rewriteFunction(Function function, Program program, TaskMonitor monitor) {
+        RewriteResult result = new RewriteResult();
         result.functionName = function.getName();
         result.originalFunctionName = function.getName();
         
@@ -107,7 +107,7 @@ public class FunctionRewrite {
             functionAnalysis.getVariables().addAll(variables);
             
             // Generate comprehensive rewrite prompt using PromptBuilder
-            String enhancementPrompt = generateComprehensiveRewritePrompt(function, decompiledCode, functionAnalysis);
+            String rewritePrompt = generateComprehensiveRewritePrompt(function, decompiledCode, functionAnalysis);
             
             monitor.setMessage("Getting model suggestions for comprehensive function rewrite...");
             monitor.setProgress(30);
@@ -121,12 +121,12 @@ public class FunctionRewrite {
                 // Print analysis header using console
                 if (console != null) {
                     console.printAnalysisHeader("✨ Comprehensive Function Rewrite", function.getName(), 
-                        provider.toString(), apiClient.getModel(), enhancementPrompt.length());
+                        provider.toString(), apiClient.getModel(), rewritePrompt.length());
                 }
                 
                 final StringBuilder streamBuffer = new StringBuilder();
                 
-                aiResponse = apiClient.sendRequest(enhancementPrompt, new APIClient.StreamCallback() {
+                aiResponse = apiClient.sendRequest(rewritePrompt, new APIClient.StreamCallback() {
                     private boolean isFirstResponse = true;
                     
                     @Override
@@ -241,7 +241,7 @@ public class FunctionRewrite {
             }
         }
         
-        // Enhance with HighSymbol information and capture ALL variables from decompiler
+        // Augment with HighSymbol information and capture ALL variables from decompiler
         if (highFunction != null) {
             Iterator<HighSymbol> symbols = highFunction.getLocalSymbolMap().getSymbols();
             while (symbols.hasNext()) {
@@ -435,16 +435,16 @@ public class FunctionRewrite {
      * Parses model response to extract function renames and variable renames
      * Uses simple text format only
      */
-    private EnhancementSuggestions parseEnhancementResponse(String response) {
-        EnhancementSuggestions suggestions = new EnhancementSuggestions();
+    private RewriteSuggestions parseRewriteResponse(String response) {
+        RewriteSuggestions suggestions = new RewriteSuggestions();
         parseTextResponse(response, suggestions);
         return suggestions;
     }
     
     /**
-     * Holds enhancement suggestions from model
+     * Holds rewrite suggestions from model
      */
-    private static class EnhancementSuggestions {
+    private static class RewriteSuggestions {
         String functionName;
         Map<String, String> variableRenames = new HashMap<>();
         Map<String, String> typeHints = new HashMap<>();
@@ -464,7 +464,7 @@ public class FunctionRewrite {
             if (jsonStart == -1 || jsonEnd == -1) {
                 // Fallback to old parsing if no JSON found
                 Msg.warn(this, "No JSON found in response, falling back to text parsing");
-                EnhancementSuggestions fallback = parseEnhancementResponse(response);
+                RewriteSuggestions fallback = parseRewriteResponse(response);
                 spec.functionName = fallback.functionName;
                 spec.variableRenames = fallback.variableRenames;
                 spec.variableTypes = fallback.typeHints;
@@ -479,7 +479,7 @@ public class FunctionRewrite {
         } catch (Exception e) {
             Msg.error(this, "Failed to parse comprehensive rewrite response: " + e.getMessage());
             // Fallback to old parsing
-            EnhancementSuggestions fallback = parseEnhancementResponse(response);
+            RewriteSuggestions fallback = parseRewriteResponse(response);
             spec.functionName = fallback.functionName;
             spec.variableRenames = fallback.variableRenames;
             spec.variableTypes = fallback.typeHints;
@@ -525,7 +525,7 @@ public class FunctionRewrite {
         } catch (Exception e) {
             Msg.error(this, "Failed to parse JSON response with ObjectMapper: " + e.getMessage());
             // Fallback to text parsing
-            EnhancementSuggestions fallback = parseEnhancementResponse(jsonStr);
+            RewriteSuggestions fallback = parseRewriteResponse(jsonStr);
             spec.functionName = fallback.functionName;
             spec.variableRenames = fallback.variableRenames;
             spec.variableTypes = fallback.typeHints;
@@ -554,7 +554,7 @@ public class FunctionRewrite {
     /**
      * Parse text format response
      */
-    private void parseTextResponse(String response, EnhancementSuggestions suggestions) {
+    private void parseTextResponse(String response, RewriteSuggestions suggestions) {
         // Extract function name suggestion
         Pattern functionPattern = Pattern.compile("FUNCTION_NAME:\\s*([\\w_]+)", Pattern.CASE_INSENSITIVE);
         Matcher functionMatcher = functionPattern.matcher(response);
@@ -595,10 +595,10 @@ public class FunctionRewrite {
     /**
      * Applies comprehensive rewrite changes using proper Ghidra APIs
      */
-    private EnhancementResult applyComprehensiveRewrite(Function function, Program program, 
+    private RewriteResult applyComprehensiveRewrite(Function function, Program program, 
             Map<String, VariableInfo> variableMap, ComprehensiveRewriteSpec spec, TaskMonitor monitor) {
         
-        EnhancementResult result = new EnhancementResult();
+        RewriteResult result = new RewriteResult();
         result.functionName = function.getName();
         result.originalFunctionName = function.getName();
         
@@ -960,16 +960,16 @@ public class FunctionRewrite {
     }
 
     /**
-     * Applies all enhancement changes in a single transaction
+     * Applies all rewrite changes in a single transaction
      */
-    private EnhancementResult applyEnhancementChanges(Function function, Program program, 
-            Map<String, VariableInfo> variableMap, EnhancementSuggestions suggestions, TaskMonitor monitor) {
+    private RewriteResult applyRewriteChanges(Function function, Program program, 
+            Map<String, VariableInfo> variableMap, RewriteSuggestions suggestions, TaskMonitor monitor) {
         
-        EnhancementResult result = new EnhancementResult();
+        RewriteResult result = new RewriteResult();
         result.functionName = function.getName();
         result.originalFunctionName = function.getName();
         
-        int transactionID = program.startTransaction("Enhance Function: " + function.getName());
+        int transactionID = program.startTransaction("Rewrite Function: " + function.getName());
         boolean success = false;
         
         try {
@@ -1048,7 +1048,7 @@ public class FunctionRewrite {
             }
             
             if (!result.functionRenamed && renameCount == 0 && typeHintCount == 0) {
-                message.append("No enhancement changes were applied");
+                message.append("No rewrite changes were applied");
             }
             
             result.message = message.toString();
@@ -1124,9 +1124,9 @@ public class FunctionRewrite {
     }
     
     /**
-     * Result of enhancement operation
+     * Result of a rewrite operation
      */
-    public static class EnhancementResult {
+    public static class RewriteResult {
         public String functionName;
         public String originalFunctionName;
         public String newFunctionName;
