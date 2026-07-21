@@ -111,7 +111,7 @@ public class Provider extends ComponentProvider {
             }
         };
 
-        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite" }, null, "a"));
+        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite" }, null, "b"));
         enhanceAction.setDescription("Recover symbol names, variable types, the prototype, and comments for the selected function");
 
         plugin.getTool().addAction(enhanceAction);
@@ -149,7 +149,7 @@ public class Provider extends ComponentProvider {
             }
         };
 
-        explainAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Explain" }, null, "b"));
+        explainAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Explain" }, null, "a"));
         explainAction.setDescription("Explain the behavior of the selected function");
 
         plugin.getTool().addAction(explainAction);
