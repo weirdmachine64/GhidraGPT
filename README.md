@@ -6,10 +6,10 @@
 
 **Author**: Mohamed Benchikh
 
-[![GitHub Stars](https://img.shields.io/github/stars/ZeroDaysBroker/GhidraGPT?style=social)](https://github.com/ZeroDaysBroker/GhidraGPT/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/ZeroDaysBroker/GhidraGPT?style=social)](https://github.com/ZeroDaysBroker/GhidraGPT/network)
-[![GitHub Issues](https://img.shields.io/github/issues/ZeroDaysBroker/GhidraGPT)](https://github.com/ZeroDaysBroker/GhidraGPT/issues)
-[![License](https://img.shields.io/github/license/ZeroDaysBroker/GhidraGPT)](https://github.com/ZeroDaysBroker/GhidraGPT/blob/main/LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/weirdmachine64/GhidraGPT?style=social)](https://github.com/weirdmachine64/GhidraGPT/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/weirdmachine64/GhidraGPT?style=social)](https://github.com/weirdmachine64/GhidraGPT/network)
+[![GitHub Issues](https://img.shields.io/github/issues/weirdmachine64/GhidraGPT)](https://github.com/weirdmachine64/GhidraGPT/issues)
+[![License](https://img.shields.io/github/license/weirdmachine64/GhidraGPT)](https://github.com/weirdmachine64/GhidraGPT/blob/main/LICENSE)
 
 </div>
 
@@ -40,7 +40,7 @@ All actions operate on a **single function at a time**, using its current decomp
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/ZeroDaysBroker/GhidraGPT.git
+   git clone https://github.com/weirdmachine64/GhidraGPT.git
    cd GhidraGPT
    ```
 
