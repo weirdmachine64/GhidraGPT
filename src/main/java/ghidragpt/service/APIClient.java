@@ -32,12 +32,19 @@ public class APIClient {
     public static final int DEFAULT_TIMEOUT_SECONDS = 30;
     public static final int DEFAULT_MAX_TOKENS = 4000;
     public static final double DEFAULT_TEMPERATURE = 0.1;
+
+    // Default model names used when the user hasn't picked one (fallbacks only)
+    private static final String DEFAULT_OPENAI_MODEL = "gpt-4";
+    private static final String DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+    private static final String DEFAULT_MISTRAL_MODEL = "mistral-large-latest";
+    private static final String DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
+    private static final String DEFAULT_GROK_MODEL = "grok-4.3";
     
     private OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private String apiKey;
     private GPTProvider provider = GPTProvider.GROK;
-    private String model = "grok-3"; // Default model
+    private String model = DEFAULT_GROK_MODEL; // Default model
     private String customApiUrl = ""; // For OPENAI_COMPATIBLE provider
     
     // Configurable parameters
@@ -168,26 +175,28 @@ public class APIClient {
             throw new IllegalStateException("Custom API URL not configured for OpenAI Compatible provider");
         }
         
-        // All providers now support native streaming
+        // All providers now support native streaming. Providers that speak the
+        // OpenAI chat-completions wire format share a single implementation and
+        // differ only by endpoint URL and default model.
         switch (provider) {
             case OPENAI:
-                return sendOpenAIStreamingRequest(prompt, callback);
+                return streamOpenAICompatible(OPENAI_API_URL, DEFAULT_OPENAI_MODEL, prompt, callback);
+            case GEMINI:
+                return streamOpenAICompatible(GEMINI_API_URL, DEFAULT_GEMINI_MODEL, prompt, callback);
+            case MISTRAL:
+                return streamOpenAICompatible(MISTRAL_API_URL, DEFAULT_MISTRAL_MODEL, prompt, callback);
+            case DEEPSEEK:
+                return streamOpenAICompatible(DEEPSEEK_API_URL, DEFAULT_DEEPSEEK_MODEL, prompt, callback);
+            case GROK:
+                return streamOpenAICompatible(GROK_API_URL, DEFAULT_GROK_MODEL, prompt, callback);
+            case OPENAI_COMPATIBLE:
+                return streamOpenAICompatible(resolveCustomChatUrl(), DEFAULT_OPENAI_MODEL, prompt, callback);
             case ANTHROPIC:
                 return sendAnthropicStreamingRequest(prompt, callback);
-            case GEMINI:
-                return sendGeminiStreamingRequest(prompt, callback);
             case COHERE:
                 return sendCohereStreamingRequest(prompt, callback);
-            case MISTRAL:
-                return sendMistralStreamingRequest(prompt, callback);
-            case DEEPSEEK:
-                return sendDeepSeekStreamingRequest(prompt, callback);
-            case GROK:
-                return sendGrokStreamingRequest(prompt, callback);
             case OLLAMA:
                 return sendOllamaStreamingRequest(prompt, callback);
-            case OPENAI_COMPATIBLE:
-                return sendOpenAICompatibleStreamingRequest(prompt, callback);
             default:
                 throw new IllegalStateException("Unsupported provider: " + provider);
         }
@@ -264,353 +273,32 @@ public class APIClient {
         }
     }
     
-    private String sendOpenAIRequest(String prompt) throws IOException {
+    /**
+     * Shared streaming implementation for every provider that speaks the OpenAI
+     * chat-completions wire format (OpenAI, Grok, Mistral, DeepSeek, Gemini's
+     * OpenAI endpoint, and user-supplied OpenAI-compatible endpoints).
+     */
+    private String streamOpenAICompatible(String url, String defaultModel, String prompt,
+                                          StreamCallback callback) throws IOException {
         OpenAIRequest request = new OpenAIRequest();
-        request.model = model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(OPENAI_API_URL)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("OpenAI API request failed: " + response.code() + " " + response.message() + 
-                    "\nResponse body: " + (response.body() != null ? response.body().string() : "empty"));
-            }
-            
-            String responseBody = response.body().string();
-            if (responseBody == null || responseBody.trim().isEmpty()) {
-                throw new IOException("Empty response body from OpenAI API");
-            }
-            
-            try {
-                OpenAIResponse apiResponse = objectMapper.readValue(responseBody, OpenAIResponse.class);
-                
-                if (apiResponse.choices != null && !apiResponse.choices.isEmpty()) {
-                    String content = apiResponse.choices.get(0).message.content;
-                    if (content != null && !content.trim().isEmpty()) {
-                        return content;
-                    } else {
-                        throw new IOException("OpenAI API returned empty content. Response: " + responseBody);
-                    }
-                } else {
-                    throw new IOException("OpenAI API returned no choices. Response: " + responseBody);
-                }
-            } catch (Exception e) {
-                throw new IOException("Failed to parse OpenAI API response: " + e.getMessage() + 
-                    "\nResponse body: " + responseBody);
-            }
-        }
-    }
-    
-    private String sendOpenAIStreamingRequest(String prompt, StreamCallback callback) throws IOException {
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model;
+        request.model = (model == null || model.isEmpty()) ? defaultModel : model;
         request.messages = List.of(new OpenAIMessage("user", prompt));
         request.maxTokens = maxTokens;
         request.temperature = temperature;
         request.stream = true;
-        
+
         String jsonRequest = objectMapper.writeValueAsString(request);
         Request httpRequest = StreamingUtils.buildStreamingRequest(
-            OPENAI_API_URL, jsonRequest, "Authorization", "Bearer " + apiKey);
-        
+            url, jsonRequest, "Authorization", "Bearer " + apiKey);
+
         return processOpenAICompatibleStream(httpRequest, callback);
     }
-    
-    private String sendAnthropicRequest(String prompt) throws IOException {
-        AnthropicRequest request = new AnthropicRequest();
-        request.model = model.isEmpty() ? "claude-3-sonnet-20240229" : model;
-        request.messages = List.of(new AnthropicMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(ANTHROPIC_API_URL)
-                .header("x-api-key", apiKey)
-                .header("Content-Type", "application/json")
-                .header("anthropic-version", "2023-06-01")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("API request failed: " + response.code() + " " + response.message());
-            }
-            
-            String responseBody = response.body().string();
-            AnthropicResponse apiResponse = objectMapper.readValue(responseBody, AnthropicResponse.class);
-            
-            if (apiResponse.content != null && !apiResponse.content.isEmpty()) {
-                return apiResponse.content.get(0).text;
-            }
-            
-            return "No response generated";
-        }
-    }
-    
-    private String sendGeminiRequest(String prompt) throws IOException {
-        // Google Gemini API request using OpenAI-compatible endpoint
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "gemini-2.5-flash" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = false;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(GEMINI_API_URL)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Gemini API request failed: " + response.code() + " " + response.message());
-            }
-            
-            String responseBody = response.body().string();
-            OpenAIResponse apiResponse = objectMapper.readValue(responseBody, OpenAIResponse.class);
-            
-            if (apiResponse.choices != null && !apiResponse.choices.isEmpty() &&
-                apiResponse.choices.get(0).message != null &&
-                apiResponse.choices.get(0).message.content != null) {
-                return apiResponse.choices.get(0).message.content;
-            }
-            
-            return "No response generated";
-        }
-    }
-    
-    private String sendCohereRequest(String prompt) throws IOException {
-        // Cohere API request
-        CohereRequest request = new CohereRequest();
-        request.model = model.isEmpty() ? "command" : model;
-        request.messages = List.of(new CohereMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(COHERE_API_URL)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Cohere API request failed: " + response.code() + " " + response.message());
-            }
-            
-            String responseBody = response.body().string();
-            CohereResponse apiResponse = objectMapper.readValue(responseBody, CohereResponse.class);
-            
-            if (apiResponse.text != null && !apiResponse.text.trim().isEmpty()) {
-                return apiResponse.text;
-            }
-            
-            return "No response generated";
-        }
-    }
-    
-    private String sendMistralRequest(String prompt) throws IOException {
-        // Mistral AI API request (OpenAI-compatible format)
-        MistralRequest request = new MistralRequest();
-        request.model = model.isEmpty() ? "mistral-large-latest" : model;
-        request.messages = List.of(new MistralMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(MISTRAL_API_URL)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Mistral API request failed: " + response.code() + " " + response.message());
-            }
-            
-            String responseBody = response.body().string();
-            MistralResponse apiResponse = objectMapper.readValue(responseBody, MistralResponse.class);
-            
-            if (apiResponse.choices != null && !apiResponse.choices.isEmpty()) {
-                return apiResponse.choices.get(0).message.content;
-            }
-            
-            return "No response generated";
-        }
-    }
-    
-    private String sendDeepSeekRequest(String prompt) throws IOException {
-        // DeepSeek API request (OpenAI-compatible format)
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "deepseek-chat" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = false;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(DEEPSEEK_API_URL)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("DeepSeek API request failed: " + response.code() + " " + response.message());
-            }
-            
-            String responseBody = response.body().string();
-            OpenAIResponse apiResponse = objectMapper.readValue(responseBody, OpenAIResponse.class);
-            
-            if (apiResponse.choices != null && !apiResponse.choices.isEmpty() &&
-                apiResponse.choices.get(0).message != null &&
-                apiResponse.choices.get(0).message.content != null) {
-                return apiResponse.choices.get(0).message.content;
-            }
-            
-            return "No response generated";
-        }
-    }
-    
-    private String sendGrokRequest(String prompt) throws IOException {
-        // Grok API request (OpenAI-compatible format)
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "grok-3" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        RequestBody body = RequestBody.create(
-            jsonRequest, MediaType.get("application/json; charset=utf-8"));
-        
-        Request httpRequest = new Request.Builder()
-                .url(GROK_API_URL)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build();
-        
-        try (Response response = httpClient.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Grok API request failed: " + response.code() + " " + response.message() + 
-                    "\nResponse body: " + (response.body() != null ? response.body().string() : "empty"));
-            }
-            
-            String responseBody = response.body().string();
-            OpenAIResponse apiResponse = objectMapper.readValue(responseBody, OpenAIResponse.class);
-            
-            if (apiResponse.choices != null && !apiResponse.choices.isEmpty()) {
-                return apiResponse.choices.get(0).message.content;
-            }
-            
-            return "No response generated";
-        }
-    }
-    
-    private String sendGrokStreamingRequest(String prompt, StreamCallback callback) throws IOException {
-        // Grok streaming API request (OpenAI-compatible format)
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "grok-beta" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = true;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        Request httpRequest = StreamingUtils.buildStreamingRequest(
-            GROK_API_URL, jsonRequest, "Authorization", "Bearer " + apiKey);
-        
-        return processOpenAICompatibleStream(httpRequest, callback);
-    }
-    
-    private String sendMistralStreamingRequest(String prompt, StreamCallback callback) throws IOException {
-        // Mistral uses OpenAI-compatible streaming format
-        MistralRequest request = new MistralRequest();
-        request.model = model.isEmpty() ? "mistral-large-latest" : model;
-        request.messages = List.of(new MistralMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = true;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        Request httpRequest = StreamingUtils.buildStreamingRequest(
-            MISTRAL_API_URL, jsonRequest, "Authorization", "Bearer " + apiKey);
-        
-        return processOpenAICompatibleStream(httpRequest, callback);
-    }
-    
-    private String sendDeepSeekStreamingRequest(String prompt, StreamCallback callback) throws IOException {
-        // DeepSeek uses OpenAI-compatible streaming format
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "deepseek-chat" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = true;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        Request httpRequest = StreamingUtils.buildStreamingRequest(
-            DEEPSEEK_API_URL, jsonRequest, "Authorization", "Bearer " + apiKey);
-        
-        return processOpenAICompatibleStream(httpRequest, callback);
-    }
-    
-    private String sendOpenAICompatibleStreamingRequest(String prompt, StreamCallback callback) throws IOException {
-        // OpenAI Compatible API request - uses custom URL with OpenAI-compatible format
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "gpt-4" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = true;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        
-        // Ensure the URL ends with /chat/completions if not already present
+
+    /**
+     * Normalizes the user-supplied OpenAI-compatible base URL into a full
+     * chat/completions endpoint.
+     */
+    private String resolveCustomChatUrl() {
         String apiUrl = customApiUrl;
         if (!apiUrl.endsWith("/chat/completions")) {
             if (!apiUrl.endsWith("/")) {
@@ -618,13 +306,9 @@ public class APIClient {
             }
             apiUrl += "chat/completions";
         }
-        
-        Request httpRequest = StreamingUtils.buildStreamingRequest(
-            apiUrl, jsonRequest, "Authorization", "Bearer " + apiKey);
-        
-        return processOpenAICompatibleStream(httpRequest, callback);
+        return apiUrl;
     }
-    
+
     private String sendOllamaStreamingRequest(String prompt, StreamCallback callback) throws IOException {
         // Ollama native streaming API request with separate system prompt
         OllamaRequest request = new OllamaRequest();
@@ -903,22 +587,6 @@ public class APIClient {
         return processAnthropicStream(httpRequest, callback);
     }
     
-    private String sendGeminiStreamingRequest(String prompt, StreamCallback callback) throws IOException {
-        // Gemini now supports OpenAI-compatible streaming
-        OpenAIRequest request = new OpenAIRequest();
-        request.model = model.isEmpty() ? "gemini-2.5-flash" : model;
-        request.messages = List.of(new OpenAIMessage("user", prompt));
-        request.maxTokens = maxTokens;
-        request.temperature = temperature;
-        request.stream = true;
-        
-        String jsonRequest = objectMapper.writeValueAsString(request);
-        Request httpRequest = StreamingUtils.buildStreamingRequest(
-            GEMINI_API_URL, jsonRequest, "Authorization", "Bearer " + apiKey);
-        
-        return processOpenAICompatibleStream(httpRequest, callback);
-    }
-    
     private String sendCohereStreamingRequest(String prompt, StreamCallback callback) throws IOException {
         // Cohere native streaming API request
         CohereRequest request = new CohereRequest();
@@ -952,19 +620,21 @@ public class APIClient {
         try {
             switch (provider) {
                 case OPENAI:
-                    return fetchOpenAIModels();
+                    return fetchOpenAICompatibleModels("https://api.openai.com/v1/models", "gpt-");
+                case GROK:
+                    return fetchOpenAICompatibleModels("https://api.x.ai/v1/models", "grok-");
+                case MISTRAL:
+                    return fetchOpenAICompatibleModels("https://api.mistral.ai/v1/models", null);
+                case DEEPSEEK:
+                    return fetchOpenAICompatibleModels("https://api.deepseek.com/v1/models", null);
+                case OPENAI_COMPATIBLE:
+                    return fetchOpenAICompatibleModels(resolveCustomModelsUrl(), null);
                 case OLLAMA:
                     return fetchOllamaModels();
-                case OPENAI_COMPATIBLE:
-                    return fetchOpenAICompatibleModels();
-                case MISTRAL:
-                    return fetchMistralModels();
-                case DEEPSEEK:
-                    return fetchDeepSeekModels();
                 case GEMINI:
                     return fetchGeminiModels();
                 default:
-                    // Providers without models API: return empty list
+                    // Providers without a models API (Anthropic, Cohere): return empty list
                     return List.of();
             }
         } catch (Exception e) {
@@ -973,29 +643,51 @@ public class APIClient {
         }
     }
     
-    private List<String> fetchOpenAIModels() throws IOException {
+    /**
+     * Shared model listing for any provider exposing an OpenAI-style
+     * {@code /models} endpoint (OpenAI, Grok, Mistral, DeepSeek, custom).
+     *
+     * @param url    the fully-qualified models endpoint
+     * @param prefix optional id prefix to filter on (e.g. "gpt-", "grok-"); null keeps all
+     */
+    private List<String> fetchOpenAICompatibleModels(String url, String prefix) throws IOException {
         Request request = new Request.Builder()
-                .url("https://api.openai.com/v1/models")
+                .url(url)
                 .header("Authorization", "Bearer " + apiKey)
                 .get()
                 .build();
-        
+
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Failed to fetch models: " + response.code());
             }
-            
+
             String responseBody = response.body().string();
             ModelsListResponse modelsResponse = objectMapper.readValue(responseBody, ModelsListResponse.class);
-            
+
             return modelsResponse.data.stream()
-                    .map(model -> model.id)
-                    .filter(id -> id.startsWith("gpt-"))
+                    .map(m -> m.id)
+                    .filter(id -> prefix == null || id.startsWith(prefix))
                     .sorted()
                     .toList();
         }
     }
-    
+
+    /**
+     * Derives the {@code /models} endpoint from the user-supplied
+     * OpenAI-compatible base URL.
+     */
+    private String resolveCustomModelsUrl() {
+        String baseUrl = customApiUrl;
+        if (baseUrl.endsWith("/chat/completions")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - "/chat/completions".length());
+        }
+        if (!baseUrl.endsWith("/")) {
+            baseUrl += "/";
+        }
+        return baseUrl + "models";
+    }
+
     private List<String> fetchOllamaModels() throws IOException {
         Request request = new Request.Builder()
                 .url("http://localhost:11434/api/tags")
@@ -1012,80 +704,6 @@ public class APIClient {
             
             return modelsResponse.models.stream()
                     .map(model -> model.name)
-                    .sorted()
-                    .toList();
-        }
-    }
-    
-    private List<String> fetchOpenAICompatibleModels() throws IOException {
-        String baseUrl = customApiUrl;
-        if (baseUrl.endsWith("/chat/completions")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - "/chat/completions".length());
-        }
-        if (!baseUrl.endsWith("/")) {
-            baseUrl += "/";
-        }
-        
-        Request request = new Request.Builder()
-                .url(baseUrl + "models")
-                .header("Authorization", "Bearer " + apiKey)
-                .get()
-                .build();
-        
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to fetch models: " + response.code());
-            }
-            
-            String responseBody = response.body().string();
-            ModelsListResponse modelsResponse = objectMapper.readValue(responseBody, ModelsListResponse.class);
-            
-            return modelsResponse.data.stream()
-                    .map(model -> model.id)
-                    .sorted()
-                    .toList();
-        }
-    }
-    
-    private List<String> fetchMistralModels() throws IOException {
-        Request request = new Request.Builder()
-                .url("https://api.mistral.ai/v1/models")
-                .header("Authorization", "Bearer " + apiKey)
-                .get()
-                .build();
-        
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to fetch Mistral models: " + response.code());
-            }
-            
-            String responseBody = response.body().string();
-            ModelsListResponse modelsResponse = objectMapper.readValue(responseBody, ModelsListResponse.class);
-            
-            return modelsResponse.data.stream()
-                    .map(model -> model.id)
-                    .sorted()
-                    .toList();
-        }
-    }
-    
-    private List<String> fetchDeepSeekModels() throws IOException {
-        Request request = new Request.Builder()
-                .url("https://api.deepseek.com/v1/models")
-                .header("Authorization", "Bearer " + apiKey)
-                .get()
-                .build();
-        
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to fetch DeepSeek models: " + response.code());
-            }
-            
-            String responseBody = response.body().string();
-            ModelsListResponse modelsResponse = objectMapper.readValue(responseBody, ModelsListResponse.class);
-            
-            return modelsResponse.data.stream()
-                    .map(model -> model.id)
                     .sorted()
                     .toList();
         }
