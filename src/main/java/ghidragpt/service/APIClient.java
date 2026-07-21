@@ -26,6 +26,8 @@ public class APIClient {
     private static final String MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
     private static final String DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions";
     private static final String GROK_API_URL = "https://api.x.ai/v1/chat/completions";
+    private static final String OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+    private static final String OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
     private static final String OLLAMA_API_URL = "http://localhost:11434/api/chat";
     
     // Default configuration constants
@@ -39,6 +41,8 @@ public class APIClient {
     private static final String DEFAULT_MISTRAL_MODEL = "mistral-large-latest";
     private static final String DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
     private static final String DEFAULT_GROK_MODEL = "grok-4.3";
+    // OpenRouter routes across many providers; "auto" lets it pick a capable default.
+    private static final String DEFAULT_OPENROUTER_MODEL = "openrouter/auto";
     
     private OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -53,7 +57,7 @@ public class APIClient {
     private int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
     
     public enum GPTProvider {
-        OPENAI, ANTHROPIC, GEMINI, COHERE, MISTRAL, DEEPSEEK, GROK, OLLAMA, OPENAI_COMPATIBLE
+        OPENAI, ANTHROPIC, GEMINI, COHERE, MISTRAL, DEEPSEEK, GROK, OPENROUTER, OLLAMA, OPENAI_COMPATIBLE
     }
     
     public APIClient() {
@@ -189,6 +193,8 @@ public class APIClient {
                 return streamOpenAICompatible(DEEPSEEK_API_URL, DEFAULT_DEEPSEEK_MODEL, prompt, callback);
             case GROK:
                 return streamOpenAICompatible(GROK_API_URL, DEFAULT_GROK_MODEL, prompt, callback);
+            case OPENROUTER:
+                return streamOpenAICompatible(OPENROUTER_API_URL, DEFAULT_OPENROUTER_MODEL, prompt, callback);
             case OPENAI_COMPATIBLE:
                 return streamOpenAICompatible(resolveCustomChatUrl(), DEFAULT_OPENAI_MODEL, prompt, callback);
             case ANTHROPIC:
@@ -623,6 +629,8 @@ public class APIClient {
                     return fetchOpenAICompatibleModels("https://api.openai.com/v1/models", "gpt-");
                 case GROK:
                     return fetchOpenAICompatibleModels("https://api.x.ai/v1/models", "grok-");
+                case OPENROUTER:
+                    return fetchOpenAICompatibleModels(OPENROUTER_MODELS_URL, null);
                 case MISTRAL:
                     return fetchOpenAICompatibleModels("https://api.mistral.ai/v1/models", null);
                 case DEEPSEEK:

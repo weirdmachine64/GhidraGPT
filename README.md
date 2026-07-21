@@ -66,6 +66,7 @@ A powerful Ghidra plugin that integrates Large Language Models (LLMs) directly i
 - **Mistral AI**: Mistral models
 - **DeepSeek**: DeepSeek models
 - **Grok (xAI)**: Grok models
+- **OpenRouter**: Unified access to models from many providers with a single key
 - **Ollama**: Bring your own model
 - **OpenAI Compatible**: Bring your own compatible OpenAI compatible API 
 
