@@ -1,0 +1,74 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GHIDRA_VERSION: "12.1.2"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Ghidra is a ~400 MB download and the build needs its jars (system-scoped
+      # dependencies), so cache the extracted install between runs.
+      - name: Cache Ghidra
+        id: cache-ghidra
+        uses: actions/cache@v4
+        with:
+          path: ghidra_install
+          key: ghidra-${{ env.GHIDRA_VERSION }}
+
+      - name: Download Ghidra
+        if: steps.cache-ghidra.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          echo "Resolving Ghidra ${GHIDRA_VERSION} release asset..."
+          url=$(curl -sL "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases?per_page=100" \
+            | jq -r '.[].assets[].browser_download_url' \
+            | grep -E "ghidra_${GHIDRA_VERSION}_PUBLIC_[0-9]+\.zip" \
+            | head -1)
+          if [ -z "$url" ]; then
+            echo "::error::Could not find a Ghidra ${GHIDRA_VERSION} release asset"
+            exit 1
+          fi
+          echo "Downloading $url"
+          curl -L -o ghidra.zip "$url"
+          mkdir -p ghidra_install
+          unzip -q ghidra.zip -d ghidra_install
+
+      - name: Export GHIDRA_INSTALL_DIR
+        run: |
+          set -euo pipefail
+          dir=$(find "$PWD/ghidra_install" -maxdepth 1 -type d -name "ghidra_*_PUBLIC" | head -1)
+          if [ -z "$dir" ]; then
+            echo "::error::Ghidra install directory not found"
+            exit 1
+          fi
+          echo "GHIDRA_INSTALL_DIR=$dir" >> "$GITHUB_ENV"
+          echo "Using GHIDRA_INSTALL_DIR=$dir"
+
+      - name: Run unit tests
+        run: mvn -B test
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: ignore
