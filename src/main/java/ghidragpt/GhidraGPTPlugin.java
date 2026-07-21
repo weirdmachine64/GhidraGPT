@@ -24,7 +24,7 @@ import javax.swing.*;
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "GPT Integration for Ghidra",
     description = "Integrates GPT models (OpenAI GPT, Anthropic Claude, etc.) into Ghidra for " +
-                  "automated code analysis, variable renaming, vulnerability detection, and explanation generation."
+                  "explaining, rewriting (recovering names and types), and auditing decompiled functions."
 )
 public class GhidraGPTPlugin extends ProgramPlugin {
     

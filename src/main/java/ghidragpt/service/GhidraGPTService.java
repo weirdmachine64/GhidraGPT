@@ -54,7 +54,7 @@ public class GhidraGPTService {
                 return createConfigurationError();
             }
             
-            monitor.setMessage("Comprehensively enhancing function...");
+            monitor.setMessage("Rewriting function for readability...");
 
             FunctionRewrite.EnhancementResult result = 
                 functionRewriteService.rewriteFunction(function, program, monitor);
@@ -62,15 +62,15 @@ public class GhidraGPTService {
             return result.getReport();
             
         } catch (Exception e) {
-            Msg.error(this, "Error enhancing function: " + e.getMessage(), e);
+            Msg.error(this, "Error rewriting function: " + e.getMessage(), e);
             return "Error during function rewrite: " + e.getMessage();
         }
     }
     
     /**
-     * Detect potential vulnerabilities in the function
+     * Audit the function for likely security issues (single-function review)
      */
-    public String detectVulnerabilities(Function function, Program program, TaskMonitor monitor) {
+    public String auditFunction(Function function, Program program, TaskMonitor monitor) {
         try {
             initializeDecompiler(program);
             DecompileResults results = decompiler.decompileFunction(function, 10, monitor); // Reduced timeout for speed
@@ -91,13 +91,13 @@ public class GhidraGPTService {
                 return createConfigurationError();
             }
             
-            String prompt = buildVulnerabilityPrompt(decompiledCode, contextInfo.toString());
+            String prompt = buildAuditPrompt(decompiledCode, contextInfo.toString());
             try {
                 // Print analysis header using console
                 long startTime = System.currentTimeMillis();
                 APIClient.GPTProvider provider = apiClient.getProvider();
                 if (console != null) {
-                    console.printAnalysisHeader("⚠ Vulnerability Detection", function.getName(), 
+                    console.printAnalysisHeader("⚠ Security Audit", function.getName(), 
                         provider.toString(), apiClient.getModel(), prompt.length());
                 }
                 
@@ -130,14 +130,14 @@ public class GhidraGPTService {
                     public void onComplete(String fullContent) {
                         long duration = System.currentTimeMillis() - startTime;
                         if (console != null) {
-                            console.printStreamComplete("vulnerability detection", duration, fullContent.length());
+                            console.printStreamComplete("security audit", duration, fullContent.length());
                         }
                     }
                     
                     @Override
                     public void onError(Exception error) {
                         if (console != null) {
-                            console.printStreamError("vulnerability detection", error.getMessage());
+                            console.printStreamError("security audit", error.getMessage());
                         }
                     }
                 });
@@ -148,7 +148,7 @@ public class GhidraGPTService {
             }
             
         } catch (Exception e) {
-            Msg.error(this, "Error detecting vulnerabilities: " + e.getMessage(), e);
+            Msg.error(this, "Error auditing function: " + e.getMessage(), e);
             return "Error: " + e.getMessage();
         }
     }
@@ -262,7 +262,7 @@ public class GhidraGPTService {
     }
     
     // Prompt building methods
-    private String buildVulnerabilityPrompt(String code, String contextInfo) {
+    private String buildAuditPrompt(String code, String contextInfo) {
         return "SECURITY ANALYSIS - Find REAL, EXPLOITABLE vulnerabilities only:\n\n" +
                "Context: " + contextInfo + "\n\n" +
                "Code:\n" + code + "\n\n" +

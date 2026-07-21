@@ -93,16 +93,16 @@ public class GhidraGPTProvider extends ComponentProvider {
 
     private void createActions() {
         // Main context menu actions for GPT analysis
-        createEnhanceFunctionAction();
+        createRewriteAction();
         createExplainAction();
-        createVulnerabilityAction();
+        createAuditAction();
     }
 
-    private void createEnhanceFunctionAction() {
-        DockingAction enhanceAction = new DockingAction("Rewrite", getName()) {
+    private void createRewriteAction() {
+        DockingAction rewriteAction = new DockingAction("Rewrite", getName()) {
             @Override
             public void actionPerformed(ActionContext context) {
-                enhanceFunctionFromContext(context);
+                rewriteFunctionFromContext(context);
             }
 
             @Override
@@ -111,17 +111,17 @@ public class GhidraGPTProvider extends ComponentProvider {
             }
         };
 
-        enhanceAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite" }, null, "b"));
-        enhanceAction.setDescription("Recover symbol names, variable types, the prototype, and comments for the selected function");
+        rewriteAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Rewrite" }, null, "b"));
+        rewriteAction.setDescription("Recover symbol names, variable types, the prototype, and comments for the selected function");
 
-        plugin.getTool().addAction(enhanceAction);
+        plugin.getTool().addAction(rewriteAction);
     }
 
-    private void createVulnerabilityAction() {
-        DockingAction vulnAction = new DockingAction("Audit", getName()) {
+    private void createAuditAction() {
+        DockingAction auditAction = new DockingAction("Audit", getName()) {
             @Override
             public void actionPerformed(ActionContext context) {
-                detectVulnerabilitiesFromContext(context);
+                auditFunctionFromContext(context);
             }
 
             @Override
@@ -130,10 +130,10 @@ public class GhidraGPTProvider extends ComponentProvider {
             }
         };
 
-        vulnAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Audit" }, null, "c"));
-        vulnAction.setDescription("Review the selected function's decompiled code for likely security issues (single-function, not whole-program)");
+        auditAction.setPopupMenuData(new MenuData(new String[] { "GhidraGPT", "Audit" }, null, "c"));
+        auditAction.setDescription("Review the selected function's decompiled code for likely security issues (single-function, not whole-program)");
 
-        plugin.getTool().addAction(vulnAction);
+        plugin.getTool().addAction(auditAction);
     }
 
     private void createExplainAction() {
@@ -289,14 +289,14 @@ public class GhidraGPTProvider extends ComponentProvider {
         return null;
     }
 
-    private void enhanceFunction() {
+    private void rewriteFunction() {
         executeAnalysis("Rewriting function...",
                 (function, monitor) -> gptService.rewriteFunction(function, currentProgram, monitor));
     }
 
-    private void detectVulnerabilities() {
+    private void auditFunction() {
         executeAnalysis("Auditing function...",
-                (function, monitor) -> gptService.detectVulnerabilities(function, currentProgram, monitor));
+                (function, monitor) -> gptService.auditFunction(function, currentProgram, monitor));
     }
 
     private void explainFunction() {
@@ -306,18 +306,18 @@ public class GhidraGPTProvider extends ComponentProvider {
 
     // Context-aware methods for context menu actions
 
-    private void enhanceFunctionFromContext(ActionContext context) {
+    private void rewriteFunctionFromContext(ActionContext context) {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
         executeAnalysisWithContext("Rewriting function...", function, program,
                 (f, p, monitor) -> gptService.rewriteFunction(f, p, monitor));
     }
 
-    private void detectVulnerabilitiesFromContext(ActionContext context) {
+    private void auditFunctionFromContext(ActionContext context) {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
         executeAnalysisWithContext("Auditing function...", function, program,
-                (f, p, monitor) -> gptService.detectVulnerabilities(f, p, monitor));
+                (f, p, monitor) -> gptService.auditFunction(f, p, monitor));
     }
 
     private void explainFunctionFromContext(ActionContext context) {
