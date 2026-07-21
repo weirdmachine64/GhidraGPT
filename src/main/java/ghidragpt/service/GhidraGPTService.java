@@ -20,14 +20,14 @@ import java.util.Iterator;
 /**
  * Service for analyzing code using GPT models
  */
-public class CodeAnalysis {
+public class GhidraGPTService {
     
     private final APIClient apiClient;
     private final DecompInterface decompiler;
     private final FunctionRewrite functionRewriteService;
     private final Console console;
     
-    public CodeAnalysis(APIClient apiClient, Console console) {
+    public GhidraGPTService(APIClient apiClient, Console console) {
         this.apiClient = apiClient;
         this.console = console;
         this.decompiler = new DecompInterface();

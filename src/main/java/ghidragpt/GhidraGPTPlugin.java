@@ -7,7 +7,7 @@ import ghidra.framework.plugintool.PluginTool;
 import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
-import ghidragpt.ui.Provider;
+import ghidragpt.ui.GhidraGPTProvider;
 import ghidragpt.service.APIClient;
 import ghidragpt.config.ConfigurationManager;
 
@@ -28,7 +28,7 @@ import javax.swing.*;
 )
 public class GhidraGPTPlugin extends ProgramPlugin {
     
-    private Provider provider;
+    private GhidraGPTProvider provider;
     private APIClient apiClient;
     private ConfigurationManager configManager;
     private boolean configurationChecked = false;
@@ -42,7 +42,7 @@ public class GhidraGPTPlugin extends ProgramPlugin {
     @Override
     protected void init() {
         super.init();
-        provider = new Provider(this, getName());
+        provider = new GhidraGPTProvider(this, getName());
         
         // Check configuration on startup
         checkAndShowConfigurationIfNeeded();

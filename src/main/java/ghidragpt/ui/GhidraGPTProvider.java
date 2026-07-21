@@ -18,7 +18,7 @@ import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
 import ghidragpt.GhidraGPTPlugin;
-import ghidragpt.service.CodeAnalysis;
+import ghidragpt.service.GhidraGPTService;
 // import resources.Icons;
 
 import javax.swing.*;
@@ -29,17 +29,17 @@ import java.awt.event.ActionListener;
 /**
  * Main UI provider for the GhidraGPT plugin
  */
-public class Provider extends ComponentProvider {
+public class GhidraGPTProvider extends ComponentProvider {
 
     private final GhidraGPTPlugin plugin;
     private final JPanel mainPanel;
     private final ConfigurationPanel configPanel;
     private final Console console;
     private final JTabbedPane tabbedPane;
-    private CodeAnalysis analysisService;
+    private GhidraGPTService gptService;
     private Program currentProgram;
 
-    public Provider(GhidraGPTPlugin plugin, String name) {
+    public GhidraGPTProvider(GhidraGPTPlugin plugin, String name) {
         super(plugin.getTool(), name, name);
         this.plugin = plugin;
 
@@ -291,17 +291,17 @@ public class Provider extends ComponentProvider {
 
     private void enhanceFunction() {
         executeAnalysis("Rewriting function...",
-                (function, monitor) -> analysisService.rewriteFunction(function, currentProgram, monitor));
+                (function, monitor) -> gptService.rewriteFunction(function, currentProgram, monitor));
     }
 
     private void detectVulnerabilities() {
         executeAnalysis("Auditing function...",
-                (function, monitor) -> analysisService.detectVulnerabilities(function, currentProgram, monitor));
+                (function, monitor) -> gptService.detectVulnerabilities(function, currentProgram, monitor));
     }
 
     private void explainFunction() {
         executeAnalysis("Explaining function...",
-                (function, monitor) -> analysisService.explainFunction(function, currentProgram, monitor));
+                (function, monitor) -> gptService.explainFunction(function, currentProgram, monitor));
     }
 
     // Context-aware methods for context menu actions
@@ -310,21 +310,21 @@ public class Provider extends ComponentProvider {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
         executeAnalysisWithContext("Rewriting function...", function, program,
-                (f, p, monitor) -> analysisService.rewriteFunction(f, p, monitor));
+                (f, p, monitor) -> gptService.rewriteFunction(f, p, monitor));
     }
 
     private void detectVulnerabilitiesFromContext(ActionContext context) {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
         executeAnalysisWithContext("Auditing function...", function, program,
-                (f, p, monitor) -> analysisService.detectVulnerabilities(f, p, monitor));
+                (f, p, monitor) -> gptService.detectVulnerabilities(f, p, monitor));
     }
 
     private void explainFunctionFromContext(ActionContext context) {
         Function function = getFunctionFromContext(context);
         Program program = getProgramFromContext(context);
         executeAnalysisWithContext("Explaining function...", function, program,
-                (f, p, monitor) -> analysisService.explainFunction(f, p, monitor));
+                (f, p, monitor) -> gptService.explainFunction(f, p, monitor));
     }
 
     private void executeAnalysis(String taskName, AnalysisTask task) {
@@ -422,17 +422,17 @@ public class Provider extends ComponentProvider {
 
     public void programActivated(Program program) {
         this.currentProgram = program;
-        if (analysisService != null) {
-            analysisService.dispose();
+        if (gptService != null) {
+            gptService.dispose();
         }
-        analysisService = new CodeAnalysis(plugin.getGPTService(), console);
-        analysisService.initializeDecompiler(program);
+        gptService = new GhidraGPTService(plugin.getGPTService(), console);
+        gptService.initializeDecompiler(program);
     }
 
     public void programDeactivated(Program program) {
-        if (analysisService != null) {
-            analysisService.dispose();
-            analysisService = null;
+        if (gptService != null) {
+            gptService.dispose();
+            gptService = null;
         }
         this.currentProgram = null;
     }
@@ -455,9 +455,9 @@ public class Provider extends ComponentProvider {
     }
 
     public void dispose() {
-        if (analysisService != null) {
-            analysisService.dispose();
-            analysisService = null;
+        if (gptService != null) {
+            gptService.dispose();
+            gptService = null;
         }
     }
 

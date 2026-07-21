@@ -33,7 +33,6 @@ import ghidragpt.ui.Console;
 import ghidragpt.service.APIClient;
 import ghidragpt.utils.PromptBuilder;
 import ghidragpt.utils.ResponseParser;
-import ghidragpt.utils.GhidraFunctionModifier;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.Msg;
 import ghidra.program.model.address.Address;
@@ -61,8 +60,7 @@ public class FunctionRewrite {
     private final PromptBuilder promptBuilder;
     private final ResponseParser responseParser;
     private final ObjectMapper objectMapper;
-    private GhidraFunctionModifier functionModifier;
-    
+
     public FunctionRewrite(APIClient apiClient, Console console) {
         this.apiClient = apiClient;
         this.console = console;
@@ -71,7 +69,6 @@ public class FunctionRewrite {
         decompiler.setOptions(options);
         this.promptBuilder = new PromptBuilder();
         this.responseParser = new ResponseParser();
-        this.functionModifier = null; // Will be initialized per operation
         this.objectMapper = new ObjectMapper();
     }
     
