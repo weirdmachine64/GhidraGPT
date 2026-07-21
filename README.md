@@ -6,14 +6,16 @@
 
 **Author**: Mohamed Benchikh
 
-[![GitHub Stars](https://img.shields.io/github/stars/ZeroDaysBroker/GhidraGPT?style=social)](https://github.com/ZeroDaysBroker/GhidraGPT/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/ZeroDaysBroker/GhidraGPT?style=social)](https://github.com/ZeroDaysBroker/GhidraGPT/network)
-[![GitHub Issues](https://img.shields.io/github/issues/ZeroDaysBroker/GhidraGPT)](https://github.com/ZeroDaysBroker/GhidraGPT/issues)
-[![License](https://img.shields.io/github/license/ZeroDaysBroker/GhidraGPT)](https://github.com/ZeroDaysBroker/GhidraGPT/blob/main/LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/weirdmachine64/GhidraGPT?style=social)](https://github.com/weirdmachine64/GhidraGPT/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/weirdmachine64/GhidraGPT?style=social)](https://github.com/weirdmachine64/GhidraGPT/network)
+[![GitHub Issues](https://img.shields.io/github/issues/weirdmachine64/GhidraGPT)](https://github.com/weirdmachine64/GhidraGPT/issues)
+[![License](https://img.shields.io/github/license/weirdmachine64/GhidraGPT)](https://github.com/weirdmachine64/GhidraGPT/blob/main/LICENSE)
 
 </div>
 
-A powerful Ghidra plugin that integrates Large Language Models (LLMs) directly into Ghidra to enhance reverse engineering workflows with code analysis and enhancement capabilities.
+GhidraGPT is a Ghidra extension that brings large language models into the decompiler workflow. You right-click a function; the plugin sends that function's decompiled C to an LLM provider of your choice and streams the response back into a dedicated console. Depending on the action, it explains the function, recovers meaningful names/types/comments and writes them back into the program, or reviews the code for likely security issues.
+
+All actions operate on a **single function at a time**, using its current decompiler output as the only context; there is no interprocedural or whole-program analysis.
 
 ## 🎥 Demo
 
@@ -21,69 +23,72 @@ A powerful Ghidra plugin that integrates Large Language Models (LLMs) directly i
 
 ## 🚀 Features
 
-### Core Functionality
-- **Function Rewrite**: Improve code readability through function renaming, variable renaming, type inference, function prototype updating, and adding contextual comments to make decompiled code more human-readable
-- **Code Explanation**: Detailed explanations of function logic and behavior
-- **Code Analysis**: Vulnerability detection and security analysis
+### Actions (right-click a function ▸ GhidraGPT)
 
-### Integration Features
-- **Context Menu Integration**: Right-click functions for instant model analysis
-- **Console Interface**: Dedicated console for viewing model responses and results
-- **Flexible Configuration**: Easy setup through configuration panel
-- **Stream Processing**: Real-time model response streaming for better user experience
+- **Explain**: generates a natural-language summary of what the selected function does, derived from its decompiled code.
+- **Rewrite**: recovers a descriptive function name, renames local variables and parameters, infers their types, updates the function prototype, and adds inline comments, then applies that markup back into the Ghidra database.
+- **Audit**: reviews the selected function's decompiled code for likely security issues (e.g. unbounded copies, integer overflows, unchecked returns). This is a best-effort, single-function review by the model, not sound static analysis: it has no cross-function dataflow or call-graph context, so treat findings as leads to verify, not proof.
+
+### Integration
+
+- **Decompiler & Listing integration**: actions are available from the right-click `GhidraGPT` submenu in both the Decompiler and Listing views.
+- **Streaming console**: responses stream token-by-token into a dedicated GhidraGPT console panel.
+- **Pluggable providers**: switch provider and model from the configuration panel; for most providers the available models can be fetched live.
+- **Configurable requests**: model, temperature, max tokens, and request timeout are all adjustable.
 
 ## 🛠️ Installation
 
-1. **Clone the Repository**:
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/ZeroDaysBroker/GhidraGPT.git
+   git clone https://github.com/weirdmachine64/GhidraGPT.git
    cd GhidraGPT
    ```
 
-2. **Build the Plugin**:
+2. **Build the extension**:
    ```bash
    GHIDRA_INSTALL_DIR=/path/to/ghidra mvn clean package
    ```
-   The built extension will be at `target/GhidraGPT-x.y.z.zip`
+   The packaged extension is written to `target/GhidraGPT-<version>.zip`.
 
 3. **Install in Ghidra**:
-   - Open Ghidra
-   - Go to `File → Install Extensions`
-   - Click the `+` button and select `target/GhidraGPT-x.y.z.zip`
-   - Restart Ghidra
-   - Enable the plugin via `File → Configure → Analysis → GhidraGPTPlugin`
+   - `File → Install Extensions`
+   - Click `+`, select `target/GhidraGPT-<version>.zip`, and restart Ghidra.
+   - Enable the plugin when prompted, or via `File → Configure → GhidraGPT → GhidraGPTPlugin`.
 
-4. **Configure API Keys**:
-   - Open Ghidra and navigate to the GhidraGPT configuration panel
-   - Enter your preferred model service API key
-   - API keys are automatically encrypted and stored securely
+4. **Configure a provider**:
+   - Open the GhidraGPT configuration panel, pick a provider and model, and enter an API key (not required for Ollama).
+   - **Note on key storage**: the key is saved locally in `~/.ghidragpt/config.properties`, lightly obfuscated with XOR, which is *not* encryption and should not be treated as secure at-rest storage. Prefer a scoped, rotatable key and protect the file accordingly.
 
-## 📋 Supported AI Providers
-- **OpenAI**: GPT models
-- **Anthropic**: Claude models
-- **Google Gemini**: Gemini models
-- **Cohere**: Command models
-- **Mistral AI**: Mistral models
-- **DeepSeek**: DeepSeek models
-- **Grok (xAI)**: Grok models
-- **OpenRouter**: Unified access to models from many providers with a single key
-- **Ollama**: Bring your own model
-- **OpenAI Compatible**: Bring your own compatible OpenAI compatible API 
+## 📋 Supported providers
+
+| Provider | Notes |
+| --- | --- |
+| OpenAI | GPT models |
+| Anthropic | Claude models |
+| Google Gemini | Gemini models (OpenAI-compatible endpoint) |
+| Cohere | Command models |
+| Mistral AI | Mistral models |
+| DeepSeek | DeepSeek models |
+| Grok (xAI) | Grok models |
+| OpenRouter | Single key, routed access to many providers' models |
+| Ollama | Local models; no API key required |
+| OpenAI-compatible | Any endpoint implementing the OpenAI chat-completions API (custom base URL) |
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+Issues, feature requests, and pull requests are welcome.
 
 ## 📄 License
 
-This project is licensed under the terms specified in the LICENSE file.
+Licensed under the terms in the [LICENSE](LICENSE) file.
 
-## 🔗 Dependencies
+## 🔗 Requirements
 
-- **Ghidra**: Compatible with Ghidra 10.0+
-- **Java**: Java 11+
-- **Maven**: Build system
+- **Ghidra**: 12.1.x (the extension declares compatibility with the Ghidra version it is built against)
+- **JDK**: 21+ (required to run Ghidra 12.x)
+- **Maven**: build system
+- **Network access** to the configured provider's API (except Ollama, which runs locally)
 
 ---
 
-**GhidraGPT** - Enhancing reverse engineering with the power of AI
+**GhidraGPT**: LLM-assisted reverse engineering, inside Ghidra.
