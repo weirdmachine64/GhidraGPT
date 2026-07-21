@@ -2,7 +2,7 @@
 
 <div align="center">
   
-![GhidraGPT Logo](assets/logo.png)
+![GhidraGPT Logo](https://github.com/user-attachments/assets/9adcbb5f-2b5d-4bac-a60a-ffca9c5e9592)
 
 **Author**: Mohamed Benchikh
 
@@ -17,7 +17,7 @@ A powerful Ghidra plugin that integrates Large Language Models (LLMs) directly i
 
 ## 🎥 Demo
 
-![Demo](assets/demo.gif)
+![Demo](https://github.com/user-attachments/assets/9ba9a950-ea9e-4dfa-8648-2f241850769d)
 
 ## 🚀 Features
 
