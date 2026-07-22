@@ -12,6 +12,11 @@ import ghidra.program.model.pcode.HighVariable;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.decompiler.ClangLine;
+import ghidra.app.decompiler.ClangToken;
+import ghidra.app.decompiler.ClangTokenGroup;
+import ghidra.app.decompiler.PrettyPrinter;
+import ghidra.app.decompiler.component.DecompilerUtils;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.ConsoleTaskMonitor;
@@ -101,7 +106,9 @@ public class FunctionRewrite {
             }
             
             HighFunction highFunction = decompileResults.getHighFunction();
-            String decompiledCode = decompileResults.getDecompiledFunction().getC();
+            // Annotate each source line with its real instruction address so the model
+            // can only cite addresses that actually exist in this function.
+            String decompiledCode = buildAddressAnnotatedCode(decompileResults);
             
             // Create function analysis using domain model
             FunctionAnalysis functionAnalysis = new FunctionAnalysis(function, true);
@@ -316,11 +323,56 @@ public class FunctionRewrite {
     /**
      * Generate comprehensive rewrite prompt for model analysis
      */
+    /**
+     * Renders the decompiled function with a real instruction address prefixed to
+     * every source line as a leading block comment, followed by the line text. The
+     * address is the minimum backing address of the tokens on that line. Lines with
+     * no backing address (declarations, closing braces) get a blank prefix. The
+     * model is instructed to copy one of these addresses verbatim into a comment
+     * edit; anything it invents is rejected by {@link #applyComment}, never guessed.
+     *
+     * <p>Uses Ghidra's own {@link DecompilerUtils#toLines} and
+     * {@link PrettyPrinter#getText} so line splitting and text rendering match the
+     * decompiler view exactly.
+     */
+    private String buildAddressAnnotatedCode(DecompileResults results) {
+        ClangTokenGroup markup = results.getCCodeMarkup();
+        if (markup == null) {
+            // No markup means no addresses to cite; renames/types still work, and any
+            // comment edit will simply fail validation. Never fabricate addresses.
+            return results.getDecompiledFunction().getC();
+        }
+        StringBuilder sb = new StringBuilder();
+        for (ClangLine line : DecompilerUtils.toLines(markup)) {
+            Address addr = lineMinAddress(line);
+            if (addr != null) {
+                sb.append("/* ").append(addr).append(" */ ");
+            } else {
+                sb.append("/*          */ ");
+            }
+            sb.append(PrettyPrinter.getText(line)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /** Minimum backing address across the tokens of a decompiled line, or null. */
+    private Address lineMinAddress(ClangLine line) {
+        Address min = null;
+        for (ClangToken token : line.getAllTokens()) {
+            Address a = token.getMinAddress();
+            if (a != null && (min == null || a.compareTo(min) < 0)) {
+                min = a;
+            }
+        }
+        return min;
+    }
+
     private String generateComprehensiveRewritePrompt(Function function, String decompiledCode, FunctionAnalysis functionAnalysis) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Analyze this decompiled function and provide a comprehensive rewrite specification to make it as human-readable as possible.\n\n");
         prompt.append("Current function: ").append(function.getName()).append("\n\n");
-        prompt.append("Decompiled code:\n").append(decompiledCode).append("\n\n");
+        prompt.append("Decompiled code (each line is prefixed with its real instruction address in a /* ... */ block):\n")
+              .append(decompiledCode).append("\n\n");
         
         // Categorize variables for better analysis
         StringBuilder parameters = new StringBuilder();
@@ -404,12 +456,13 @@ public class FunctionRewrite {
         prompt.append("{\"op\":\"rename\",\"old\":\"local_38\",\"new\":\"image_base_buffer\"}\n");
         prompt.append("{\"op\":\"retype\",\"name\":\"violation_address\",\"type\":\"PVOID\"}\n");
         prompt.append("{\"op\":\"prototype\",\"signature\":\"NTSTATUS handle_security_failure(PVOID violation_address, ULONG violation_code)\"}\n");
-        prompt.append("{\"op\":\"comment\",\"address\":\"0x1400010a0\",\"text\":\"Check if violation address is valid\"}\n\n");
+        prompt.append("{\"op\":\"comment\",\"address\":\"004010a5\",\"text\":\"Check if violation address is valid\"}\n\n");
 
         prompt.append("Notes:\n");
         prompt.append("- Emit only the edits that are needed; skip anything already well-named or correct.\n");
         prompt.append("- Keep well-named variables like 'ControlPc' and 'FunctionEntry' unless you have significantly better names.\n");
-        prompt.append("- For comment addresses, use hex format like '0x1400010a0'.\n");
+        prompt.append("- For a comment, copy an address verbatim from a line's /* ... */ prefix. Do not invent addresses: an address not shown in the code is rejected.\n");
+        prompt.append("- Skip commenting a line that has a blank /* */ prefix (no backing address).\n");
         prompt.append("- The prototype signature must be a complete, parseable C function signature.\n");
         prompt.append("- Each line must be valid standalone JSON so a partial response still applies the completed edits.\n");
 
@@ -631,7 +684,7 @@ public class FunctionRewrite {
                 String addressStr = comment.getKey();
                 String commentText = comment.getValue();
                 
-                if (applyComment(program, addressStr, commentText)) {
+                if (applyComment(program, function, addressStr, commentText)) {
                     commentCount++;
                     Msg.info(this, "Added comment at " + addressStr + ": " + commentText);
                 } else {
@@ -794,9 +847,22 @@ public class FunctionRewrite {
         }
     }
     
-    private boolean applyComment(Program program, String addressStr, String commentText) {
+    private boolean applyComment(Program program, Function function, String addressStr, String commentText) {
         try {
             Address addr = program.getAddressFactory().getAddress(addressStr);
+            if (addr == null) {
+                Msg.error(this, "Rejected comment: unparseable address '" + addressStr + "'");
+                return false;
+            }
+            if (!function.getBody().contains(addr)) {
+                Msg.error(this, "Rejected comment at " + addressStr + ": outside function '"
+                        + function.getName() + "' body");
+                return false;
+            }
+            if (program.getListing().getCodeUnitAt(addr) == null) {
+                Msg.error(this, "Rejected comment at " + addressStr + ": not a code-unit boundary");
+                return false;
+            }
             program.getListing().setComment(addr, CommentType.PRE, commentText);
             return true;
         } catch (Exception e) {
